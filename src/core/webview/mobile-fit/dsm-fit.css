@@ -39,6 +39,15 @@
   /* Vue toolbars clip extra buttons: let them scroll the same way */
   html.spl-fit:not(#spl-fit-id) .v-toolbar > .main-wrapper { overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none; }
   html.spl-fit:not(#spl-fit-id) .v-toolbar > .main-wrapper::-webkit-scrollbar { display: none; }
+  /* A Vue toolbar's fields on the right (a search box, a filter menu) keep their desktop widths
+     and crush its buttons, to nothing when there are two of them. The buttons take what they
+     need (scrolling past what they cannot have), the fields share the rest, at least 40% */
+  html.spl-fit:not(#spl-fit-id) .v-toolbar > .main-wrapper { flex: 0 1 auto !important; }
+  html.spl-fit:not(#spl-fit-id) .v-toolbar > .right-wrapper { flex: 1 1 0 !important; min-width: 40% !important; }
+  html.spl-fit:not(#spl-fit-id) .v-toolbar > .right-wrapper > .v-textfield-wrapper,
+  html.spl-fit:not(#spl-fit-id) .v-toolbar > .right-wrapper > .v-select2-wrapper { flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; }
+  html.spl-fit:not(#spl-fit-id) .v-toolbar > .right-wrapper > .v-textfield-wrapper > *,
+  html.spl-fit:not(#spl-fit-id) .v-toolbar > .right-wrapper > .v-textfield-wrapper .v-textfield-input-wrapper { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
   /* A toolbar with more buttons past an edge fades out there (dsm-fit.js edges()) */
   html.spl-fit:not(#spl-fit-id) .spl-fit-more-end { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   html.spl-fit:not(#spl-fit-id) .spl-fit-more-start { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
@@ -167,6 +176,12 @@
   /* A value that is only a marker (a status dot centred in the stacked value) sits at the start of the label's line */
   html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .mobile-value:has(> :empty:only-child) { display: flex !important; align-items: center; min-height: var(--v-table-mobile-row-card-line-height__field, 20px); }
   html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .mobile-value > :empty:only-child { margin-left: 0 !important; margin-right: 0 !important; }
+  /* A label with nothing to label (an action column that shows its buttons only on a desktop's hover) goes, with its empty value */
+  html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .mobile-value:empty,
+  html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .mobile-label:has(+ .mobile-value:empty) { display: none !important; }
+  /* A column with no title, labelled "undefined:" (dsm-fit.js blankLabels()): no label, its value the card's width */
+  html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .mobile-label.spl-fit-nolabel { display: none !important; }
+  html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .spl-fit-nolabel + .mobile-value { grid-column: 1 / -1 !important; }
 
   /* A card header (DSM Vue's v-card) with a menu beside its title: the title keeps its words,
      the menu gives up its desktop width (a 240 px select) and takes what is left */
@@ -227,6 +242,23 @@ html.spl-fit:not(#spl-fit-id) .spl-fit-under { visibility: hidden !important; }
 /* Squeezed layouts (dsm-fit.js repair()): only the script adds these classes, in single-App mode.
    A flex row whose items ran past its edge wraps */
 html.spl-fit:not(#spl-fit-id) .spl-fit-wrap { flex-wrap: wrap !important; row-gap: 8px; }
+/* Cards of a wrapped row, each on a line of its own: each fills it; one that spread its content over its desktop height
+   takes its content's height with a top padding like its other sides, and the part that grew keeps a gap below it */
+html.spl-fit:not(#spl-fit-id) .spl-fit-wrap-fill > * { flex: 1 1 100% !important; width: auto !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-pad { padding-top: var(--spl-fit-pad, 12px) !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-gap { margin-bottom: 12px !important; }
+/* A meter and its value beside a name, in a row that scrolled sideways: under the name */
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-row { display: block !important; float: none !important; width: auto !important; min-width: 0 !important; max-width: 100% !important; height: auto !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-in { width: auto !important; min-width: 0 !important; height: auto !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter { position: relative !important; left: auto !important; top: auto !important; right: auto !important; bottom: auto !important; height: var(--spl-fit-h) !important; max-width: 100% !important; margin-top: 4px !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-box,
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-up { height: auto !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-box > .ps__rail-x,
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-box > .ps__rail-y { display: none !important; }
+/* A page box that hid its content running past its bottom (dsm-fit.js clippedPages()) scrolls */
+html.spl-fit:not(#spl-fit-id) .spl-fit-page-scroll { overflow-y: auto !important; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; scrollbar-width: none; }
+/* (A scroll bar that takes room would narrow the page under the charts the App sized to it) */
+html.spl-fit:not(#spl-fit-id) .spl-fit-page-scroll::-webkit-scrollbar { display: none; }
 /* Panes side by side that left the growing one too little: a column, each fixed pane folded to a bar (dsm-fit.js foldPanes()) */
 html.spl-fit:not(#spl-fit-id) .spl-fit-panes { flex-direction: column !important; flex-wrap: nowrap !important; }
 html.spl-fit:not(#spl-fit-id) .spl-fit-panes > .spl-fit-pane-main { flex: 1 1 0 !important; width: auto !important; max-width: none !important; min-height: 0 !important; align-self: stretch !important; }

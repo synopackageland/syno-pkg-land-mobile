@@ -1188,15 +1188,23 @@
     // (Run past the edge: no column narrower than the widest box, which may
     // hold content of a fixed width, such as a menu; at most the full width)
     if (over) { var widest = 0; cards.forEach(function (j) { widest = Math.max(widest, boxes[j].width || 0); }); cols = Math.min(cols, Math.max(1, Math.floor((room + CARD_GAP) / (Math.min(widest, room) + CARD_GAP)))); }
+    // A last row with fewer cards than columns (two cards over one, half the row empty):
+    // as many columns as divide the cards evenly, when that costs at most one more row;
+    // otherwise the last row's cards share its width
+    if (cards.length % cols) {
+      for (var even = cols - 1; even >= 1; even--) if (cards.length % even === 0) { if (Math.ceil(cards.length / even) <= Math.ceil(cards.length / cols) + 1) cols = even; break; }
+    }
     if (cols >= cards.length) return false;
-    var w = Math.floor((room - CARD_GAP * (cols - 1)) / cols), rows = Math.ceil(cards.length / cols);
+    var w = Math.floor((room - CARD_GAP * (cols - 1)) / cols), rows = Math.ceil(cards.length / cols), lastN = cards.length - (rows - 1) * cols;
+    var lastW = Math.floor((room - CARD_GAP * (lastN - 1)) / lastN);
     for (i = 0; i < boxes.length; i++) if (cards.indexOf(i) < 0) { boxes[i].left = -10000; boxes[i].top = 0; boxes[i].width = 0; boxes[i].dirtySize = true; }
     cards.forEach(function (j, k) {
       var box = boxes[j], m = items[j].margins || { left: 0, right: 0, top: 0, bottom: 0 };
       cardClass(items[j], true);
-      box.left = pad.left + (k % cols) * (w + CARD_GAP);
+      var last = Math.floor(k / cols) === rows - 1, cw = last ? lastW : w;
+      box.left = pad.left + (k % cols) * (cw + CARD_GAP);
       box.top = pad.top + Math.floor(k / cols) * (rowH + CARD_GAP);
-      box.width = w - m.left - m.right; box.height = rowH - m.top - m.bottom; box.dirtySize = true;
+      box.width = cw - m.left - m.right; box.height = rowH - m.top - m.bottom; box.dirtySize = true;
     });
     return pad.top + pad.bottom + rows * rowH + (rows - 1) * CARD_GAP;
   };
@@ -1309,6 +1317,47 @@
     ct.splTextIn = grown && result.meta.nonFlexHeight + pad.top + pad.bottom > size.height + 1;
     return result;
   };
+  // A vbox that holds a card grid (grown taller than the row it replaced) shares less
+  // height with its flexed item: a list under the cards (a host's details) keeps the
+  // height that is left and scrolls inside a box shorter than a few rows, its first
+  // line cut off when it scrolls. On a phone such an item takes its content's height,
+  // when that fits the vbox's own height, and the vbox scrolls instead. A list longer
+  // than the vbox keeps its own scroller. (Its content: the list's scroller, DSM's
+  // fleXcroll or a box that scrolls, measured past its height.)
+  var flexNeed = function (c) {
+    var d = c.el && c.el.dom, need = 0;
+    if (!d) return 0;
+    var r = d.getBoundingClientRect();
+    Array.prototype.forEach.call(d.querySelectorAll('*'), function (e) {
+      var content = -1;
+      if (e.classList.contains('mcontentwrapper')) { var w = e.querySelector('.contentwrapper'); content = w ? w.offsetHeight : -1; }
+      else if (e.clientHeight && /auto|scroll/.test(getComputedStyle(e).overflowY)) content = e.scrollHeight;
+      if (content <= 0) return;
+      // What is above the scroller in the item (a header), its content, and what is below it
+      var b = e.getBoundingClientRect();
+      need = Math.max(need, Math.max(0, b.top - r.top) + content + Math.max(0, r.bottom - b.bottom));
+    });
+    return Math.ceil(need);
+  };
+  var fitFlexed = function (layout, calc, items, size, result) {
+    var ct = layout.container, set = [], i;
+    if (!ct) return result;
+    ct.splFlexIn = false;
+    if (!narrow() || !ct.splCardsIn) return result;
+    for (i = 0; i < items.length; i++) {
+      var c = items[i], box = result.boxes[i];
+      if (!c.flex || !box) continue;
+      var need = flexNeed(c);
+      if (need > (box.height || 0) + 2 && need <= size.height) set.push({ c: c, h: need, height: c.height, flex: c.flex });
+    }
+    if (!set.length) return result;
+    set.forEach(function (g) { g.c.height = g.h; g.c.flex = 0; });
+    try { result = calc.call(layout, items, size); } finally { set.forEach(function (g) { g.c.height = g.height; g.c.flex = g.flex; }); }
+    result.boxes.forEach(function (b) { b.dirtySize = true; });
+    var pad = layout.padding || { top: 0, bottom: 0 };
+    ct.splFlexIn = result.meta.nonFlexHeight + pad.top + pad.bottom > size.height + 1;
+    return result;
+  };
   // A row of a chart and its legend whose legend is hidden (DSM hides it on
   // a narrow window): the chart keeps its share of the desktop row (Log
   // Center's overview: 83 of 307 px). On a phone the lone chart takes the row.
@@ -1382,6 +1431,28 @@
       try { ct.doLayout(false, true); } catch (e) { /* its layout */ }
     });
   };
+  /** A vbox laid out around a card grid before the list under the cards had its rows
+   * (an App fills it in after a request): lay it out again once such a flexed list is
+   * taller than its box and fits the vbox, a few times per vbox (see fitFlexed) */
+  var flexedRows = function (root) {
+    if (!root || !narrow() || !window.Ext || !Ext.getCmp) return;
+    var owners = [];
+    Array.prototype.forEach.call(root.querySelectorAll('.spl-fit-card'), function (e) {
+      var c = e.id && Ext.getCmp(e.id), ct = c && c.ownerCt, owner = ct && ct.ownerCt;
+      if (owner && owner.splCardsIn && owners.indexOf(owner) < 0) owners.push(owner);
+    });
+    owners.forEach(function (o) {
+      var target = o.getLayoutTarget && o.getLayoutTarget(), room = target ? target.getHeight(true) : 0;
+      var short = o.items && o.items.items.some(function (c) {
+        if (!c.flex || c.hidden || !c.el || !c.el.dom) return false;
+        var need = flexNeed(c);
+        return need > c.el.dom.offsetHeight + 2 && need <= room;
+      });
+      if (!short || (o.splFlexTries || 0) >= 3) return;
+      o.splFlexTries = (o.splFlexTries || 0) + 1;
+      try { o.doLayout(); } catch (e) { /* its layout */ }
+    });
+  };
   // ---- Masks over a widened chart ----------------------------------------------
   // An App may hide the axis labels that slide out of a live chart with small
   // blank boxes over the chart's edges, placed for the chart's desktop width
@@ -1419,6 +1490,7 @@
     if (vcalc) V.prototype.calculateChildBoxes = function (items, size) {
       var result = vcalc.apply(this, arguments);
       try { result = growText(this, vcalc, items, size, result); } catch (e) { /* desktop layout */ }
+      try { result = fitFlexed(this, vcalc, items, size, result); } catch (e) { /* desktop layout */ }
       return result;
     };
     H.prototype.splCards = true;
@@ -1443,10 +1515,11 @@
         var ct = this.container, calcs = this.childBoxCache, target = ct && this.innerCt && ct.getLayoutTarget(), need = 0;
         if (!target) return out;
         if (this instanceof H && ct.splGridded) need = ct.splGrid;
-        else if (this instanceof V && (ct.splCardsIn || ct.splTextIn) && calcs) need = calcs.meta.nonFlexHeight + (this.padding ? this.padding.top + this.padding.bottom : 0);
+        else if (this instanceof V && (ct.splCardsIn || ct.splTextIn || ct.splFlexIn) && calcs) need = calcs.meta.nonFlexHeight + (this.padding ? this.padding.top + this.padding.bottom : 0);
         else if (!target.hasClass('spl-fit-vscroll')) return out;
         var over = narrow() && need > target.getHeight(true) + 1;
-        target.toggleClass('spl-fit-vscroll', over);
+        // (Ext 3's toggleClass takes no state: it flips the class on every layout)
+        if (over) target.addClass('spl-fit-vscroll'); else target.removeClass('spl-fit-vscroll');
         if (over) this.innerCt.setHeight(need);
       } catch (e) { /* desktop layout */ }
       return out;
@@ -2711,7 +2784,7 @@
   var repairs = [];
   var keep = function (el, cls) { repairs.push({ el: el, cls: cls }); };
   // The variable a repair's class reads its size from
-  var REPAIR_VAR = { 'spl-fit-cap': ['--spl-fit-cap'], 'spl-fit-rows-row': ['--spl-fit-row', '--spl-fit-zoom'] };
+  var REPAIR_VAR = { 'spl-fit-cap': ['--spl-fit-cap'], 'spl-fit-pad': ['--spl-fit-pad'], 'spl-fit-meter': ['--spl-fit-h'], 'spl-fit-grow': ['--spl-fit-min'], 'spl-fit-rows-row': ['--spl-fit-row', '--spl-fit-zoom'] };
   var drop = function (r) { r.el.classList.remove(r.cls); (REPAIR_VAR[r.cls] || []).forEach(function (v) { r.el.style.removeProperty(v); }); };
   var undoRepairs = function () {
     repairs.forEach(drop);
@@ -2888,7 +2961,79 @@
     // Or the row fits only by crushing an item below what it holds: a legend entry shrunk to a
     // few characters, its title cut and its number and unit spilling out. Wrapped, each item keeps its width
     if (!out) kids.forEach(function (c) { if (!out && crushedItem(c)) out = true; });
-    if (out) { e.classList.add('spl-fit-wrap'); keep(e, 'spl-fit-wrap'); }
+    // Or a header squeezes its title or its controls onto more lines (see squeezedHeader)
+    if (!out) out = squeezedHeader(kids);
+    if (!out) return;
+    var before = kids.map(function (c) { return c.getBoundingClientRect().height; });
+    e.classList.add('spl-fit-wrap'); keep(e, 'spl-fit-wrap');
+    wrappedCards(e, kids, before);
+  };
+  // A card header: a short title beside a group of controls (a CPU / Memory / Network switch).
+  // At a phone's width the row keeps both side by side by breaking the title over two lines or
+  // the buttons over two rows. Rule: in a flex row of a text-only item and an item of controls,
+  // when the title (at most HEADER_TEXT characters) takes more than one line, or the controls
+  // more than one row, the row wraps: the title on its line, the controls together on the next
+  var HEADER_TEXT = 40, CONTROL = 'button, [role=button], [role=radio], [role=tab], select, input, .v-btn';
+  /** How many lines a box's text takes: its text's line boxes at distinct heights */
+  var textLines = function (e) {
+    if (!document.createRange) return 1;
+    var tops = [];
+    var walk = function (el) {
+      for (var n = el.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType !== 3 || !/\S/.test(n.nodeValue)) continue;
+        var range = document.createRange(); range.selectNodeContents(n);
+        Array.prototype.forEach.call(range.getClientRects(), function (r) {
+          if (r.width > 0 && !tops.some(function (t) { return Math.abs(t - r.top) < r.height / 2; })) tops.push(r.top);
+        });
+      }
+      Array.prototype.forEach.call(el.children, walk);
+    };
+    walk(e);
+    return tops.length;
+  };
+  var squeezedHeader = function (kids) {
+    var title = null, controls = null;
+    kids.forEach(function (c) {
+      if (c.querySelector(CONTROL) || c.matches(CONTROL)) controls = controls || c;
+      else if (/\S/.test(c.textContent || '')) title = title || c;
+    });
+    if (!title || !controls) return false;
+    var text = String(title.textContent || '').trim();
+    if (text.length > HEADER_TEXT) return false;
+    // (A name the App keeps on one line, cut by its ellipsis, is not a title broken over lines)
+    var ts = getComputedStyle(title), oneLine = /nowrap|pre$/.test(ts.whiteSpace) || title.scrollWidth > title.clientWidth + 1;
+    if (!oneLine && textLines(title) > 1) return true;
+    // Controls on more than one row: their tops differ by more than half a control
+    var tops = Array.prototype.map.call(controls.querySelectorAll(CONTROL), function (b) { var r = b.getBoundingClientRect(); return r.height ? { top: r.top, h: r.height } : null; }).filter(Boolean);
+    return tops.some(function (t) { return Math.abs(t.top - tops[0].top) > tops[0].h / 2; });
+  };
+  // A dashboard's row of cards that wrapped, so each card takes a line of its own:
+  //  - each card fills its line, though the App set it a desktop width (320 px of 350);
+  //  - a card that spread its content over its desktop height (a status icon centred by
+  //    a part of the card that grows, the card with no top padding of its own) takes its
+  //    content's height instead, which brings its icon up against its top edge. It gets a
+  //    top padding like its other sides (CARD_PAD_MIN to CARD_PAD_MAX px), and the part that
+  //    grew keeps a gap (CARD_GAP px) from what follows it.
+  //  A card is a box at least WRAP_CARD_W of the row wide and WRAP_CARD_H high
+  var WRAP_CARD_W = 0.6, WRAP_CARD_H = 60, CARD_PAD_MIN = 12, CARD_PAD_MAX = 24, CARD_GAP = 12;
+  var wrappedCards = function (e, kids, before) {
+    var rects = kids.map(function (c) { return c.getBoundingClientRect(); }), inner = e.clientWidth;
+    var alone = rects.every(function (r, i) { return rects.every(function (o, j) { return i === j || Math.min(r.bottom, o.bottom) - Math.max(r.top, o.top) <= 2; }); });
+    var cards = rects.every(function (r) { return r.width >= inner * WRAP_CARD_W && r.height >= WRAP_CARD_H; });
+    if (!alone || !cards) return;
+    e.classList.add('spl-fit-wrap-fill'); keep(e, 'spl-fit-wrap-fill');
+    kids.forEach(function (c, i) {
+      var cs = getComputedStyle(c);
+      if (!/flex/.test(cs.display) || !/^column/.test(cs.flexDirection) || c.getBoundingClientRect().height >= before[i] - 8) return;
+      var parts = flowKids(c), grew = parts.filter(function (k) { return (parseFloat(getComputedStyle(k).flexGrow) || 0) > 0; })[0];
+      if (!grew) return;
+      var pad = Math.min(CARD_PAD_MAX, Math.max(CARD_PAD_MIN, px(cs.paddingBottom), px(cs.paddingLeft), px(cs.paddingRight)));
+      if (px(cs.paddingTop) < pad) {
+        c.style.setProperty('--spl-fit-pad', Math.round(pad) + 'px');
+        c.classList.add('spl-fit-pad'); keep(c, 'spl-fit-pad');
+      }
+      if (grew !== parts[parts.length - 1]) { grew.classList.add('spl-fit-gap'); keep(grew, 'spl-fit-gap'); }
+    });
   };
   var wrapRows = function (root) {
     var all = root.querySelectorAll('*');
@@ -3191,6 +3336,95 @@
       e.classList.add('spl-fit-unit'); keep(e, 'spl-fit-unit');
     }
   };
+  // g. A page that cuts off its own content: a desktop dashboard sized to its window
+  //    (Container Manager's overview: a column of cards in a box that hides what
+  //    overflows) fits a desktop, but its cards, stacked on a phone, run past the
+  //    bottom with nothing to scroll. Rule: a box about the size of the page (at least
+  //    CLIP_PAGE_W of the screen wide and CLIP_PAGE_H high) that hides what overflows,
+  //    when its content in the flow runs more than CLIP_OVER px past its bottom and no
+  //    box around it scrolls, scrolls itself, and the page inside grows to its content
+  var CLIP_PAGE_W = 0.85, CLIP_PAGE_H = 0.5, CLIP_OVER = 24;
+  var clippedPages = function (root) {
+    var vw = window.innerWidth, vh = window.innerHeight, all = [root].concat(Array.prototype.slice.call(root.querySelectorAll('div, section, main'), 0, CAP));
+    for (var i = 0; i < all.length; i++) {
+      var e = all[i];
+      if (e.offsetWidth < vw * CLIP_PAGE_W || e.offsetHeight < vh * CLIP_PAGE_H || e.scrollHeight <= e.clientHeight + CLIP_OVER || e.classList.contains('spl-fit-page-scroll')) continue;
+      var cs = getComputedStyle(e);
+      if (!/hidden|clip/.test(cs.overflowY) || e.matches(SCROLLER_PART) || e.closest(NO_REPAIR)) continue;
+      var r = e.getBoundingClientRect(), bottom = -Infinity;
+      flowKids(e).forEach(function (c) {
+        var cr = c.getBoundingClientRect(), tall = getComputedStyle(c).overflowY === 'visible' ? Math.max(c.scrollHeight, c.offsetHeight) : c.offsetHeight;
+        bottom = Math.max(bottom, cr.top + tall + px(getComputedStyle(c).marginBottom));
+      });
+      if (bottom <= r.bottom + CLIP_OVER) continue;
+      var scrolls = false;
+      for (var a = e.parentElement; a && !scrolls; a = a.parentElement) scrolls = /auto|scroll/.test(getComputedStyle(a).overflowY) && a.scrollHeight > a.clientHeight + 2;
+      if (scrolls) continue;
+      e.classList.add('spl-fit-page-scroll'); keep(e, 'spl-fit-page-scroll');
+      // The page inside, set to the box's height, grows to its content: its background goes down with it
+      flowKids(e).forEach(function (c) {
+        if (getComputedStyle(c).overflowY !== 'visible' || c.scrollHeight <= c.offsetHeight + 2 || c.classList.contains('spl-fit-grow')) return;
+        c.style.setProperty('--spl-fit-min', c.offsetHeight + 'px');
+        c.classList.add('spl-fit-grow'); keep(c, 'spl-fit-grow');
+      });
+    }
+  };
+  // h. Label/value cards (DSM Vue's table on a phone) label each value with its column's title;
+  //    a column with no title (a column of rich items, like a registry's search results) is
+  //    labelled "undefined:". Such a label goes, and its value takes the card's width
+  var BLANK_LABEL = /^\s*(undefined|null)?\s*[:\uff1a]?\s*$/;
+  var blankLabels = function (root) {
+    Array.prototype.forEach.call(root.querySelectorAll('.mobile-row-card-wrapper .mobile-label'), function (e) {
+      if (e.classList.contains('spl-fit-nolabel') || e.children.length || !BLANK_LABEL.test(e.textContent || '')) return;
+      e.classList.add('spl-fit-nolabel'); keep(e, 'spl-fit-nolabel');
+    });
+  };
+  // i. Meter rows: a row of a name, a meter (a thin bar and its fill) and its value, with
+  //    the meter and value placed at a fixed spot beside the name, in a box that scrolls
+  //    sideways (a volume's usage: a 434 px row in a 325 px card, its "1.5 TB" cut off).
+  //    Rule: a box that scrolls a row wider than itself sideways, when the row holds a
+  //    meter inside a block placed absolutely beside text in the flow, and that block
+  //    alone fits the box. The block joins the flow under the name, keeping its own size,
+  //    the row and the name take the box's width, and the box, and the boxes around it
+  //    set to its old height, grow to the row's height instead of scrolling. Kept until the width changes.
+  var METER_H = 16, METER_W = 48;
+  var meterBar = function (e) {
+    if (e.matches('progress, [role=progressbar]')) return true;
+    var h = e.offsetHeight, w = e.offsetWidth;
+    if (h < 2 || h > METER_H || w < METER_W || e.children.length !== 1 || String(e.textContent || '').trim()) return false;
+    var f = e.children[0];
+    return !f.children.length && Math.abs(f.offsetHeight - h) <= 2 && f.offsetWidth <= w;
+  };
+  var meterRows = function (root) {
+    var all = root.querySelectorAll('div');
+    for (var i = 0; i < all.length && i < CAP; i++) {
+      var box = all[i];
+      if (box.classList.contains('spl-fit-meter-box') || !box.offsetWidth || box.scrollWidth <= box.clientWidth + 2 || getComputedStyle(box).overflowX === 'visible' || box.closest('svg, .spl-fit-scaled, .spl-fit-wide')) continue;
+      flowKids(box).forEach(function (row) {
+        if (row.offsetWidth <= box.clientWidth + 2) return;
+        var bar = Array.prototype.filter.call(row.querySelectorAll('*'), meterBar)[0];
+        if (!bar) return;
+        var block = null;
+        for (var a = bar; a && a !== row; a = a.parentElement) if (/absolute/.test(getComputedStyle(a).position)) block = a;
+        if (!block || block.offsetWidth > box.clientWidth || !/\d/.test(block.textContent || '')) return;
+        var name = String(row.textContent || '').replace(block.textContent || '', '');
+        if (!name.trim()) return;
+        // The boxes around it, and the name beside it (sized to what the block left), take the row's width
+        var wide = flowKids(block.parentElement);
+        block.style.setProperty('--spl-fit-h', block.offsetHeight + 'px');
+        block.classList.add('spl-fit-meter'); keep(block, 'spl-fit-meter');
+        for (var b = block.parentElement; b && b !== row; b = b.parentElement) wide.push(b);
+        wide.forEach(function (w) { w.classList.add('spl-fit-meter-in'); keep(w, 'spl-fit-meter-in'); });
+        row.classList.add('spl-fit-meter-row'); keep(row, 'spl-fit-meter-row');
+        box.classList.add('spl-fit-meter-box'); keep(box, 'spl-fit-meter-box');
+        box.scrollLeft = 0;
+        // Boxes around it set to the old height grow with it, up to one that holds it or scrolls
+        for (var up = box.parentElement; up && up !== document.body && getComputedStyle(up).overflowY === 'visible' && up.scrollHeight > up.clientHeight + 1; up = up.parentElement) {
+          up.classList.add('spl-fit-meter-up'); keep(up, 'spl-fit-meter-up');
+        }
+      });
+    }
+  };
   var step = function (f) { try { f(); } catch (e) { /* presentation only */ } };
   var repairWidth = 0;
   var repair = function (root) {
@@ -3200,6 +3434,7 @@
     step(function () { sideNav(root); });
     step(function () { foldPanes(root); });
     step(function () { units(root); });
+    step(function () { blankLabels(root); });
     step(function () { wrapRows(root); });
     step(function () { gutters(root); });
     step(function () { capWide(root); });
@@ -3208,6 +3443,7 @@
     step(function () { stacked = floatCards(root); });
     // Rows are measured in the cards' final width: after they stacked
     if (!stacked) step(function () { fixedRows(root); });
+    step(function () { meterRows(root); });
     // Cards that stacked: their content is measured again at the new width
     if (stacked) contentSoon(false);
     // DSM's own scrollbars (fleXcroll) measured the content before: measure again
@@ -3242,10 +3478,13 @@
       step(regrowRegions);
       step(function () { chartRows(root); });
       step(function () { staleGrids(root); });
+      step(function () { flexedRows(root); });
       step(function () { chartMasks(root); });
       // Boxes that spill over what follows grow first: the rest is measured after
       grown = grown.filter(function (e) { return e.isConnected && e.classList.contains('spl-fit-grow'); });
       findSpills(root).forEach(function (e) { e.classList.add('spl-fit-grow'); grown.push(e); });
+      // A page that cuts off what now runs past its bottom scrolls: measured once the boxes grew
+      step(function () { clippedPages(root); });
       reflowed = reflowed.filter(function (rec) {
         if (!rec.group[0].isConnected) { unflow(rec); return false; }
         if (rec.group.every(function (g) { return g.classList.contains('spl-fit-reflow'); }) && rec.cb.classList.contains('spl-fit-reflow-grow')) return true;

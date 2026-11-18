@@ -1492,10 +1492,11 @@ test('the fit stylesheet uses only DSM\'s shared component classes, never an App
     'item-summary', 'item-icon', 'item-title', 'item-toggle', 'item-wrap', // SYNO.ux.ExpandableListView rows
     'mobile-row-card-wrapper', 'field-wrapper', 'field-align-vertical', 'mobile-label', 'mobile-value', // DSM Vue's table as cards on a phone
     'actions-wrapper', // v-card's header
-    'main-wrapper', // v-toolbar
+    'main-wrapper', 'right-wrapper', // v-toolbar
     'module-list-layout', 'layout-module-list-panel', // DSM's Vue page-list window
     'body', 'cancel-icon', // DSM's Vue tour and dialog boxes
     'mcontentwrapper', 'contentwrapper', // DSM's own scroller (fleXcroll), in every Ext grid
+    'ps__rail-x', 'ps__rail-y', // DSM Vue's v-ps scroller (perfect-scrollbar)
     'spl-fit', // the class the script puts on <html>
   ]);
   const other = [...used].filter(c => !shared.test(c) && !parts.has(c));
@@ -1845,10 +1846,19 @@ test('card rows: panels an hbox squeezes under a card\'s width form a grid, the 
 });
 
 test('card rows: a tall card takes the full width rather than a strip', () => {
-  const { lay } = cardRow({ cards: 3 });
+  const { lay } = cardRow({ cards: 4 });
   const { boxes } = lay(400);
-  // 154 px high: a card is at least 140 px wide, so two of 194 fit in 400; the third wraps
-  assert.deepEqual(boxes.filter((b: any) => !b.component.gap).map((b: any) => [b.left, b.top]), [[0, 0], [206, 0], [0, 166]]);
+  // 154 px high: a card is at least 140 px wide, so two of 194 fit in 400 a row
+  assert.deepEqual(boxes.filter((b: any) => !b.component.gap).map((b: any) => [b.left, b.top, b.width]), [[0, 0, 194], [206, 0, 194], [0, 166, 194], [206, 166, 194]]);
+});
+
+test('card rows: a grid never leaves its last row half empty', () => {
+  const cards = (n: number) => cardRow({ cards: n }).lay(400).boxes.filter((b: any) => !b.component.gap).map((b: any) => [b.left, b.top, b.width]);
+  // Three cards (a host, its virtual machines, its storage): two over one would leave half
+  // the second row empty; one column costs a single row more
+  assert.deepEqual(cards(3), [[0, 0, 400], [0, 166, 400], [0, 332, 400]]);
+  // Five: one column would cost two rows more; the last card takes its row's width
+  assert.deepEqual(cards(5), [[0, 0, 194], [206, 0, 194], [0, 166, 194], [206, 166, 194], [0, 332, 400]]);
 });
 
 test('card rows: rows of buttons, rows that fit, and wide screens keep the desktop layout', () => {
@@ -2159,11 +2169,14 @@ test('wrapped text in a vbox: a configured height grows too, and the column scro
   const { lay, items, layout, ct } = statusHeader({ configured: true });
   const result = lay(260, 60);
   assert.deepEqual(result.boxes.map((b: any) => [b.top, b.height]), [[0, 56], [56, 4], [60, 17]]);
-  const target = { cls: new Set<string>(), getHeight: () => 60, hasClass(c: string) { return this.cls.has(c); }, toggleClass(c: string, on: boolean) { if (on) this.cls.add(c); else this.cls.delete(c); } };
+  // Ext 3's toggleClass takes no state: it flips the class
+  const target = { cls: new Set<string>(), getHeight: () => 60, hasClass(c: string) { return this.cls.has(c); }, addClass(c: string) { this.cls.add(c); }, removeClass(c: string) { this.cls.delete(c); }, toggleClass(c: string) { if (this.cls.has(c)) this.cls.delete(c); else this.cls.add(c); } };
   ct.getLayoutTarget = () => target;
   Object.assign(layout, { childBoxCache: result, innerCt: { h: 0, setHeight(h: number) { this.h = h; } } });
   layout.onLayout();
   assert.ok(target.cls.has('spl-fit-vscroll'), 'the vbox scrolls');
+  layout.onLayout();
+  assert.ok(target.cls.has('spl-fit-vscroll'), 'and still scrolls when it is laid out again');
   assert.equal(layout.innerCt.h, 77, 'over the whole column');
   assert.equal(items[0].height, 28, 'the item\'s own config is put back');
   assert.equal(items[0].minHeight, undefined);
@@ -2192,6 +2205,48 @@ test('wrapped text in a vbox: turned to a wider screen, the title gets its one-l
   // Laid out again: nothing left to put back
   titleDom.box = { ...titleDom.box, height: 28 };
   assert.equal(lay(600).boxes[0].dirtySize, false);
+});
+
+test('a vbox around a card grid gives the list under the cards its content height and scrolls instead', () => {
+  const p = page(), ext = fakeExt();
+  class BoxLayout { onLayout() {} }
+  class HBoxLayout extends BoxLayout { calculateChildBoxes() { return { boxes: [], meta: {} }; } }
+  // Ext 3's vbox: fixed heights stacked, the flexed item takes what is left
+  class VBoxLayout extends BoxLayout {
+    calculateChildBoxes(items: any[], size: { width: number; height: number }) {
+      const fixed = items.reduce((a, c) => a + (c.flex ? 0 : c.height), 0);
+      let top = 0;
+      const boxes = items.map(c => { const height = c.flex ? Math.max(0, size.height - fixed) : c.height; const box = { component: c, left: 0, top, width: size.width, height, dirtySize: false }; top += height; return box; });
+      return { boxes, meta: { nonFlexHeight: fixed } };
+    }
+  }
+  (ext.full as any).layout = { BoxLayout, HBoxLayout, VBoxLayout };
+  p.ctx.innerWidth = 390; p.ctx.screen.width = 390;
+  p.ctx.getComputedStyle = (n: any) => ({ paddingLeft: '0', paddingRight: '0', overflowX: 'visible', overflowY: 'visible', ...(n?.cs ?? {}) });
+  p.ctx.Ext = ext.full;
+  p.run(fitJs());
+  // A host's details: a list in DSM's scroller (fleXcroll), 185 px of rows, squeezed to 0 under the grid
+  const make = (rows: number) => {
+    const list = node('div', { cls: 'mcontentwrapper', box: { left: 0, top: 613, width: 310, height: 0 } }, [node('div', { cls: 'contentwrapper', box: { left: 0, top: 613, width: 310, height: rows } })]);
+    const detail = node('div', { box: { left: 0, top: 612, width: 310, height: 1 } }, [list]);
+    const items: any[] = [{ height: 126, el: { dom: node('div') } }, { height: 486, el: { dom: node('div') } }, { flex: 1, el: { dom: detail } }];
+    const ct: any = { splCardsIn: true, el: { hasClass: () => false } };
+    const layout = Object.assign(Object.create(VBoxLayout.prototype), { container: ct });
+    return { ct, items, layout, lay: () => layout.calculateChildBoxes(items, { width: 310, height: 612 }) };
+  };
+  const m = make(185);
+  const result = m.lay();
+  assert.deepEqual(result.boxes.map((b: any) => [b.top, b.height]), [[0, 126], [126, 486], [612, 186]], 'its header line and its rows');
+  assert.equal(m.ct.splFlexIn, true, 'the vbox scrolls');
+  assert.equal(m.items[2].flex, 1, 'its own config is put back');
+  assert.equal(m.items[2].height, undefined);
+  // A list longer than the vbox keeps its own scroller; a vbox with no grid, Ext's layout
+  const long = make(900);
+  assert.equal(long.lay().boxes[2].height, 0);
+  assert.equal(long.ct.splFlexIn, false);
+  const plain = make(185);
+  plain.ct.splCardsIn = false;
+  assert.equal(plain.lay().boxes[2].height, 0);
 });
 
 test('card rows: a card\'s content set wider than the card in a stylesheet stays inside it, border included', () => {
@@ -2467,6 +2522,185 @@ test('flex rows: a row that fits only by crushing an item below what it holds wr
   const size = node('div', { box: { left: 0, top: 0, width: 30, height: 20 }, cs: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' } }, [node('div', { box: { left: 0, top: 0, width: 20, height: 20 }, text: '12' }), node('div', { box: { left: 24, top: 0, width: 17, height: 20 }, text: 'KB' })]);
   contentPage([size]);
   assert.ok(!size.cls.has('spl-fit-wrap'));
+});
+
+/** A dashboard card's header (Container Manager's overview): a title beside a CPU / Memory / Network switch */
+function cardHeader({ title = 'CPU usage (%)', titleHeight = 56, buttonRows = 2 } = {}) {
+  const t = node('div', { box: { left: 41, top: 427, width: 106, height: titleHeight }, cs: { lineHeight: '28px' }, text: title });
+  // Its text's line boxes, one per line
+  (t as any).lines = Array.from({ length: Math.round(titleHeight / 28) }, (_, i) => ({ left: 41, top: 427 + i * 28, width: 100, height: 28, right: 141, bottom: 455 + i * 28 }));
+  const buttons = ['CPU', 'Memory', 'Network'].map((label, i) => node('button', { cls: 'v-btn', box: { left: 147 + (i % 2) * 83, top: 427 + (buttonRows > 1 ? Math.floor(i / 2) * 28 : 0), width: 83, height: 28 }, cs: { display: 'inline-block' }, text: label }));
+  const group = node('div', { box: { left: 147, top: 427, width: 202, height: buttonRows * 28 }, cs: { display: 'flex' } }, [node('div', { cls: 'v-btn-group', box: { left: 147, top: 427, width: 202, height: buttonRows * 28 } }, buttons)]);
+  return node('div', { box: { left: 41, top: 427, width: 308, height: Math.max(titleHeight, buttonRows * 28) }, cs: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' } }, [t, group]);
+}
+
+/** A page whose text nodes report their line boxes (a node's `lines`, or its one box) */
+function linesPage(content: FakeNode[]) {
+  const d = dsmPage({ app: 'SYNO.SDS.StorageManager.Instance' });
+  d.p.ctx.document.createRange = () => { let owner: FakeNode; return { selectNodeContents(n: any) { owner = n.owner; }, getClientRects() { const b = owner.layout; return (owner as any).lines ?? [{ ...b, right: b.left + b.width, bottom: b.top + b.height }]; } }; };
+  return contentPageOn(d, content);
+}
+
+test('flex rows: a card header that breaks its title over two lines, or its switch over two rows, wraps', () => {
+  const contentPage = linesPage;
+  // Both squeezed (Container Manager's CPU card at 390 px)
+  const both = cardHeader();
+  contentPage([both]);
+  assert.ok(both.cls.has('spl-fit-wrap'));
+  // Only the buttons on two rows; only the title on two lines
+  const buttons = cardHeader({ titleHeight: 28 });
+  contentPage([buttons]);
+  assert.ok(buttons.cls.has('spl-fit-wrap'), 'the switch on two rows');
+  const title = cardHeader({ buttonRows: 1 });
+  contentPage([title]);
+  assert.ok(title.cls.has('spl-fit-wrap'), 'the title on two lines');
+  // Title on one line, the buttons on one row: left alone
+  const fits = cardHeader({ titleHeight: 28, buttonRows: 1 });
+  contentPage([fits]);
+  assert.ok(!fits.cls.has('spl-fit-wrap'));
+  // A paragraph beside a button is text that wraps on purpose, not a title
+  const text = cardHeader({ title: 'Images not used by any container take up space on the volume.', buttonRows: 1 });
+  contentPage([text]);
+  assert.ok(!text.cls.has('spl-fit-wrap'));
+});
+
+/** Two dashboard cards in a row that runs past its edge; once it wraps, each card is on a line of its own */
+function dashboardRow() {
+  const row = node('div', { cls: 'row', box: { left: 20, top: 16, width: 350, height: 228 }, cs: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' } });
+  const wrapped = () => row.cls.has('spl-fit-wrap');
+  // The status card spreads its icon over its height with a part that grows, and has no top padding of its own
+  const status = node('div', { box: { left: 45, top: 17, width: 300, height: 52 }, cs: { display: 'flex', flexGrow: '1' } }, [node('div', { box: { left: 113, top: 17, width: 232, height: 28 }, text: 'Healthy' })]);
+  const rows = node('div', { box: { left: 45, top: 69, width: 300, height: 71 }, cs: { flexGrow: '0' }, text: '6 containers are running' });
+  const info = node('div', { box: { left: 20, top: 16, width: 350, height: 228 }, cs: { display: 'flex', flexDirection: 'column', paddingTop: '0px', paddingBottom: '24px', paddingLeft: '24px', paddingRight: '24px' } }, [status, rows]);
+  const image = node('div', { box: { left: 386, top: 16, width: 320, height: 228 }, text: '15 images' });
+  Object.defineProperty(info, 'box', { get: () => wrapped() ? { left: 20, top: 16, width: 350, height: 149 } : { left: 20, top: 16, width: 350, height: 228 } });
+  Object.defineProperty(image, 'box', { get: () => wrapped() ? { left: 20, top: 173, width: 320, height: 221 } : { left: 386, top: 16, width: 320, height: 228 } });
+  row.appendChild(info); row.appendChild(image);
+  return { row, info, image, status, rows };
+}
+
+test('flex rows: cards of a wrapped row each fill their line, and a card that spread its content over its height gets a top padding', () => {
+  const { row, info, image, status, rows } = dashboardRow();
+  contentPage([row]);
+  assert.ok(row.cls.has('spl-fit-wrap'));
+  assert.ok(row.cls.has('spl-fit-wrap-fill'), 'each card on a line of its own fills it');
+  // Its content's height (no desktop min-height), a top padding like its sides, a gap under the part that grew
+  assert.ok(info.cls.has('spl-fit-pad'));
+  assert.equal(info.vars['--spl-fit-pad'], '24px');
+  assert.ok(status.cls.has('spl-fit-gap'));
+  assert.ok(!rows.cls.has('spl-fit-gap'), 'only the part that grew');
+  assert.ok(!image.cls.has('spl-fit-pad'), 'a block card that is its content\'s height: as it is');
+  // Small items that wrapped (a legend) keep their own widths
+  const legend = legendRow();
+  contentPage([legend]);
+  assert.ok(legend.cls.has('spl-fit-wrap'));
+  assert.ok(!legend.cls.has('spl-fit-wrap-fill'));
+  const css = fitCss();
+  assert.match(css, /\.spl-fit-wrap-fill > \* \{ flex: 1 1 100% !important; width: auto !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; \}/);
+  assert.match(css, /\.spl-fit-pad \{ padding-top: var\(--spl-fit-pad, 12px\) !important; \}/);
+  assert.match(css, /\.spl-fit-gap \{ margin-bottom: 12px !important; \}/);
+  assert.doesNotMatch(css, /min-height: var\(--spl-fit-tall/, 'no desktop height kept');
+});
+
+test('clipped pages: a page-sized box that hides its content running past its bottom scrolls, and the page in it grows', () => {
+  // Container Manager's overview: cards stacked on a phone, 1057 px of them in an 800 px box that hides overflow
+  const make = (overflowY: string) => {
+    const pageBox = node('div', { box: { left: 0, top: 0, width: 393, height: 800 }, cs: { display: 'flex', flexDirection: 'column' } }, [node('div', { box: { left: 20, top: 16, width: 350, height: 300 }, text: 'Healthy' })]);
+    pageBox.naturalHeight = 1057;
+    const box = node('div', { cls: 'container', box: { left: 0, top: 0, width: 393, height: 800 }, cs: { overflowY } }, [pageBox]);
+    box.naturalHeight = 1057;
+    return { box, pageBox };
+  };
+  const clipped = make('hidden');
+  contentPage([clipped.box]);
+  assert.ok(clipped.box.cls.has('spl-fit-page-scroll'));
+  assert.ok(clipped.pageBox.cls.has('spl-fit-grow'));
+  assert.equal(clipped.pageBox.vars['--spl-fit-min'], '800px');
+  // A box that already scrolls, or one whose content fits: left alone
+  const scrolls = make('auto');
+  contentPage([scrolls.box]);
+  assert.ok(!scrolls.box.cls.has('spl-fit-page-scroll'));
+  const fits = make('hidden');
+  fits.box.naturalHeight = 810; fits.pageBox.naturalHeight = 810;
+  contentPage([fits.box]);
+  assert.ok(!fits.box.cls.has('spl-fit-page-scroll'), 'within a few pixels');
+  // A small box (a carousel strip) that hides what overflows is the App's own
+  const strip = make('hidden');
+  strip.box.box = { left: 0, top: 0, width: 393, height: 120 };
+  contentPage([strip.box]);
+  assert.ok(!strip.box.cls.has('spl-fit-page-scroll'));
+  assert.match(fitCss(), /\.spl-fit-page-scroll \{ overflow-y: auto !important;/);
+});
+
+test('meter rows: a name, a meter and its value in a row that scrolls sideways go under the name, and the box grows instead', () => {
+  // A volume's usage: a 434 px row (name, then the meter and "240.7 GB | 1.5 TB free" drawn at a fixed spot) in a 325 px scroller
+  const make = (opts: { meter?: boolean; blockWidth?: number } = {}) => {
+    const meter = opts.meter ?? true, blockWidth = opts.blockWidth ?? 200;
+    const fill = node('div', { box: { left: 258, top: 231, width: 27, height: 8 } });
+    const track = node('div', { box: { left: 258, top: 231, width: blockWidth, height: 8 }, cs: { position: 'absolute' } }, meter ? [fill] : []);
+    const block = node('div', { box: { left: 258, top: 223, width: blockWidth, height: 48 }, cs: { position: 'absolute' } }, [
+      node('div', { box: { left: 258, top: 223, width: blockWidth, height: 0 } }, [track, node('div', { box: { left: 258, top: 247, width: blockWidth, height: 24 }, cs: { position: 'absolute' }, text: '240.7 GB | 1.5 TB free' })]),
+    ]);
+    const name = node('div', { box: { left: 108, top: 223, width: 150, height: 48 }, cs: { display: 'flex', flexDirection: 'column' } }, [node('div', { box: { left: 108, top: 223, width: 150, height: 24 }, text: 'Volume 1' })]);
+    const table = node('div', { box: { left: 40, top: 211, width: 434, height: 72 } }, [name, block]);
+    const row = node('div', { box: { left: 40, top: 211, width: 434, height: 72 }, cs: { position: 'relative' } }, [table]);
+    const box = node('div', { cls: 'v-ps ps ps--active-x', box: { left: 40, top: 211, width: 325, height: 84 }, cs: { position: 'relative', overflowX: 'hidden', overflowY: 'hidden' } }, [row]);
+    box.naturalWidth = 446; box.scrollLeft = 30;
+    const card = node('div', { box: { left: 21, top: 211, width: 348, height: 84 } }, [box]);
+    card.naturalHeight = 136;
+    return { card, box, row, table, name, block };
+  };
+  const m = make();
+  contentPage([m.card]);
+  assert.ok(m.block.cls.has('spl-fit-meter'));
+  assert.equal(m.block.vars['--spl-fit-h'], '48px', 'it keeps its own height');
+  assert.ok(m.table.cls.has('spl-fit-meter-in') && m.name.cls.has('spl-fit-meter-in'), 'the name sized to what the block left takes the width');
+  assert.ok(!m.block.cls.has('spl-fit-meter-in'), 'the block keeps its own width');
+  assert.ok(m.row.cls.has('spl-fit-meter-row'));
+  assert.ok(m.box.cls.has('spl-fit-meter-box'));
+  assert.equal(m.box.scrollLeft, 0);
+  assert.ok(m.card.cls.has('spl-fit-meter-up'), 'a box set to the old height grows');
+  // A wide row with no meter (a table that scrolls on purpose), or a meter block wider than the box: left alone
+  const plain = make({ meter: false });
+  contentPage([plain.card]);
+  assert.ok(!plain.box.cls.has('spl-fit-meter-box') && !plain.block.cls.has('spl-fit-meter'));
+  const wide = make({ blockWidth: 340 });
+  contentPage([wide.card]);
+  assert.ok(!wide.block.cls.has('spl-fit-meter'));
+  const css = fitCss();
+  assert.match(css, /\.spl-fit-meter \{ position: relative !important; left: auto !important; top: auto !important;[^}]*height: var\(--spl-fit-h\) !important;/);
+  assert.match(css, /\.spl-fit-meter-row \{ display: block !important; float: none !important; width: auto !important; min-width: 0 !important;/);
+  assert.match(css, /\.spl-fit-meter-box,\s*html\.spl-fit:not\(#spl-fit-id\) \.spl-fit-meter-up \{ height: auto !important; \}/);
+  assert.match(css, /\.spl-fit-meter-box > \.ps__rail-x,\s*html\.spl-fit:not\(#spl-fit-id\) \.spl-fit-meter-box > \.ps__rail-y \{ display: none !important; \}/);
+});
+
+test('label/value cards: a column with no title loses its "undefined:" label, and a label with an empty value goes', () => {
+  const label = (text: string) => node('div', { cls: 'mobile-label', box: { left: 16, top: 65, width: 78, height: 28 }, text });
+  const blank = label('undefined\uff1a'), named = label('Name:'), empty = label('');
+  const card = node('div', { cls: 'mobile-row-card-wrapper', box: { left: 16, top: 53, width: 358, height: 83 } }, [
+    node('div', { cls: 'field-wrapper field-align-vertical', box: { left: 16, top: 65, width: 358, height: 58 }, cs: { display: 'grid' } }, [
+      blank, node('div', { cls: 'mobile-value', box: { left: 106, top: 65, width: 268, height: 54 }, text: 'nginx' }),
+      named, node('div', { cls: 'mobile-value', box: { left: 106, top: 97, width: 268, height: 28 }, text: 'ovis' }),
+      empty, node('div', { cls: 'mobile-value', box: { left: 106, top: 129, width: 268, height: 28 }, text: 'x' }),
+    ]),
+  ]);
+  contentPage([card]);
+  assert.ok(blank.cls.has('spl-fit-nolabel'));
+  assert.ok(empty.cls.has('spl-fit-nolabel'), 'a label with no text at all');
+  assert.ok(!named.cls.has('spl-fit-nolabel'));
+  const media = phoneCss();
+  assert.match(media, /\.field-align-vertical \.mobile-label\.spl-fit-nolabel \{ display: none !important; \}/);
+  assert.match(media, /\.field-align-vertical \.spl-fit-nolabel \+ \.mobile-value \{ grid-column: 1 \/ -1 !important; \}/);
+  // An action column that shows its buttons only on a desktop's hover: label and empty value go
+  assert.match(media, /\.field-align-vertical \.mobile-value:empty,\s*html\.spl-fit:not\(#spl-fit-id\) \.mobile-row-card-wrapper \.field-wrapper\.field-align-vertical \.mobile-label:has\(\+ \.mobile-value:empty\) \{ display: none !important; \}/);
+});
+
+test('vue toolbars: the buttons take what they need and the search and filter fields share the rest', () => {
+  // Container Manager's log: a 250 px filter menu and a 242 px search box crushed its Clear and Export buttons to nothing
+  const media = phoneCss();
+  assert.match(media, /\.v-toolbar > \.main-wrapper \{ flex: 0 1 auto !important; \}/);
+  assert.match(media, /\.v-toolbar > \.right-wrapper \{ flex: 1 1 0 !important; min-width: 40% !important; \}/);
+  assert.match(media, /\.v-toolbar > \.right-wrapper > \.v-textfield-wrapper,\s*html\.spl-fit:not\(#spl-fit-id\) \.v-toolbar > \.right-wrapper > \.v-select2-wrapper \{ flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; \}/);
 });
 
 /** Panes side by side drawn with flex boxes (Surveillance Station's Monitor Center): a fixed tree beside a growing view */
