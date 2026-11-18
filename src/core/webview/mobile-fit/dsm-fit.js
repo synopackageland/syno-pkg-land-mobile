@@ -1188,15 +1188,23 @@
     // (Run past the edge: no column narrower than the widest box, which may
     // hold content of a fixed width, such as a menu; at most the full width)
     if (over) { var widest = 0; cards.forEach(function (j) { widest = Math.max(widest, boxes[j].width || 0); }); cols = Math.min(cols, Math.max(1, Math.floor((room + CARD_GAP) / (Math.min(widest, room) + CARD_GAP)))); }
+    // A last row with fewer cards than columns (two cards over one, half the row empty):
+    // as many columns as divide the cards evenly, when that costs at most one more row;
+    // otherwise the last row's cards share its width
+    if (cards.length % cols) {
+      for (var even = cols - 1; even >= 1; even--) if (cards.length % even === 0) { if (Math.ceil(cards.length / even) <= Math.ceil(cards.length / cols) + 1) cols = even; break; }
+    }
     if (cols >= cards.length) return false;
-    var w = Math.floor((room - CARD_GAP * (cols - 1)) / cols), rows = Math.ceil(cards.length / cols);
+    var w = Math.floor((room - CARD_GAP * (cols - 1)) / cols), rows = Math.ceil(cards.length / cols), lastN = cards.length - (rows - 1) * cols;
+    var lastW = Math.floor((room - CARD_GAP * (lastN - 1)) / lastN);
     for (i = 0; i < boxes.length; i++) if (cards.indexOf(i) < 0) { boxes[i].left = -10000; boxes[i].top = 0; boxes[i].width = 0; boxes[i].dirtySize = true; }
     cards.forEach(function (j, k) {
       var box = boxes[j], m = items[j].margins || { left: 0, right: 0, top: 0, bottom: 0 };
       cardClass(items[j], true);
-      box.left = pad.left + (k % cols) * (w + CARD_GAP);
+      var last = Math.floor(k / cols) === rows - 1, cw = last ? lastW : w;
+      box.left = pad.left + (k % cols) * (cw + CARD_GAP);
       box.top = pad.top + Math.floor(k / cols) * (rowH + CARD_GAP);
-      box.width = w - m.left - m.right; box.height = rowH - m.top - m.bottom; box.dirtySize = true;
+      box.width = cw - m.left - m.right; box.height = rowH - m.top - m.bottom; box.dirtySize = true;
     });
     return pad.top + pad.bottom + rows * rowH + (rows - 1) * CARD_GAP;
   };
@@ -1309,6 +1317,47 @@
     ct.splTextIn = grown && result.meta.nonFlexHeight + pad.top + pad.bottom > size.height + 1;
     return result;
   };
+  // A vbox that holds a card grid (grown taller than the row it replaced) shares less
+  // height with its flexed item: a list under the cards (a host's details) keeps the
+  // height that is left and scrolls inside a box shorter than a few rows, its first
+  // line cut off when it scrolls. On a phone such an item takes its content's height,
+  // when that fits the vbox's own height, and the vbox scrolls instead. A list longer
+  // than the vbox keeps its own scroller. (Its content: the list's scroller, DSM's
+  // fleXcroll or a box that scrolls, measured past its height.)
+  var flexNeed = function (c) {
+    var d = c.el && c.el.dom, need = 0;
+    if (!d) return 0;
+    var r = d.getBoundingClientRect();
+    Array.prototype.forEach.call(d.querySelectorAll('*'), function (e) {
+      var content = -1;
+      if (e.classList.contains('mcontentwrapper')) { var w = e.querySelector('.contentwrapper'); content = w ? w.offsetHeight : -1; }
+      else if (e.clientHeight && /auto|scroll/.test(getComputedStyle(e).overflowY)) content = e.scrollHeight;
+      if (content <= 0) return;
+      // What is above the scroller in the item (a header), its content, and what is below it
+      var b = e.getBoundingClientRect();
+      need = Math.max(need, Math.max(0, b.top - r.top) + content + Math.max(0, r.bottom - b.bottom));
+    });
+    return Math.ceil(need);
+  };
+  var fitFlexed = function (layout, calc, items, size, result) {
+    var ct = layout.container, set = [], i;
+    if (!ct) return result;
+    ct.splFlexIn = false;
+    if (!narrow() || !ct.splCardsIn) return result;
+    for (i = 0; i < items.length; i++) {
+      var c = items[i], box = result.boxes[i];
+      if (!c.flex || !box) continue;
+      var need = flexNeed(c);
+      if (need > (box.height || 0) + 2 && need <= size.height) set.push({ c: c, h: need, height: c.height, flex: c.flex });
+    }
+    if (!set.length) return result;
+    set.forEach(function (g) { g.c.height = g.h; g.c.flex = 0; });
+    try { result = calc.call(layout, items, size); } finally { set.forEach(function (g) { g.c.height = g.height; g.c.flex = g.flex; }); }
+    result.boxes.forEach(function (b) { b.dirtySize = true; });
+    var pad = layout.padding || { top: 0, bottom: 0 };
+    ct.splFlexIn = result.meta.nonFlexHeight + pad.top + pad.bottom > size.height + 1;
+    return result;
+  };
   // A row of a chart and its legend whose legend is hidden (DSM hides it on
   // a narrow window): the chart keeps its share of the desktop row (Log
   // Center's overview: 83 of 307 px). On a phone the lone chart takes the row.
@@ -1382,6 +1431,28 @@
       try { ct.doLayout(false, true); } catch (e) { /* its layout */ }
     });
   };
+  /** A vbox laid out around a card grid before the list under the cards had its rows
+   * (an App fills it in after a request): lay it out again once such a flexed list is
+   * taller than its box and fits the vbox, a few times per vbox (see fitFlexed) */
+  var flexedRows = function (root) {
+    if (!root || !narrow() || !window.Ext || !Ext.getCmp) return;
+    var owners = [];
+    Array.prototype.forEach.call(root.querySelectorAll('.spl-fit-card'), function (e) {
+      var c = e.id && Ext.getCmp(e.id), ct = c && c.ownerCt, owner = ct && ct.ownerCt;
+      if (owner && owner.splCardsIn && owners.indexOf(owner) < 0) owners.push(owner);
+    });
+    owners.forEach(function (o) {
+      var target = o.getLayoutTarget && o.getLayoutTarget(), room = target ? target.getHeight(true) : 0;
+      var short = o.items && o.items.items.some(function (c) {
+        if (!c.flex || c.hidden || !c.el || !c.el.dom) return false;
+        var need = flexNeed(c);
+        return need > c.el.dom.offsetHeight + 2 && need <= room;
+      });
+      if (!short || (o.splFlexTries || 0) >= 3) return;
+      o.splFlexTries = (o.splFlexTries || 0) + 1;
+      try { o.doLayout(); } catch (e) { /* its layout */ }
+    });
+  };
   // ---- Masks over a widened chart ----------------------------------------------
   // An App may hide the axis labels that slide out of a live chart with small
   // blank boxes over the chart's edges, placed for the chart's desktop width
@@ -1419,6 +1490,7 @@
     if (vcalc) V.prototype.calculateChildBoxes = function (items, size) {
       var result = vcalc.apply(this, arguments);
       try { result = growText(this, vcalc, items, size, result); } catch (e) { /* desktop layout */ }
+      try { result = fitFlexed(this, vcalc, items, size, result); } catch (e) { /* desktop layout */ }
       return result;
     };
     H.prototype.splCards = true;
@@ -1443,10 +1515,11 @@
         var ct = this.container, calcs = this.childBoxCache, target = ct && this.innerCt && ct.getLayoutTarget(), need = 0;
         if (!target) return out;
         if (this instanceof H && ct.splGridded) need = ct.splGrid;
-        else if (this instanceof V && (ct.splCardsIn || ct.splTextIn) && calcs) need = calcs.meta.nonFlexHeight + (this.padding ? this.padding.top + this.padding.bottom : 0);
+        else if (this instanceof V && (ct.splCardsIn || ct.splTextIn || ct.splFlexIn) && calcs) need = calcs.meta.nonFlexHeight + (this.padding ? this.padding.top + this.padding.bottom : 0);
         else if (!target.hasClass('spl-fit-vscroll')) return out;
         var over = narrow() && need > target.getHeight(true) + 1;
-        target.toggleClass('spl-fit-vscroll', over);
+        // (Ext 3's toggleClass takes no state: it flips the class on every layout)
+        if (over) target.addClass('spl-fit-vscroll'); else target.removeClass('spl-fit-vscroll');
         if (over) this.innerCt.setHeight(need);
       } catch (e) { /* desktop layout */ }
       return out;
@@ -3405,6 +3478,7 @@
       step(regrowRegions);
       step(function () { chartRows(root); });
       step(function () { staleGrids(root); });
+      step(function () { flexedRows(root); });
       step(function () { chartMasks(root); });
       // Boxes that spill over what follows grow first: the rest is measured after
       grown = grown.filter(function (e) { return e.isConnected && e.classList.contains('spl-fit-grow'); });

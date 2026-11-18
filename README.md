@@ -392,7 +392,10 @@ overflow scrolls once its content runs past its bottom (`clippedPages()`). A Vue
 buttons take what they need and its search and filter fields share the rest. DSM Vue's
 label/value cards drop an "undefined:" label (a column with no title) and a label whose
 value is empty. A row of a name, a meter and its value that scrolled sideways puts the meter
-and value under the name, and its box grows instead (`meterRows()`). Every CSS rule is scoped to
+and value under the name, and its box grows instead (`meterRows()`). A card grid whose last
+row would be half empty uses fewer columns, and the cards of a short last row share its width;
+a list squeezed under a card grid takes its content's height and the box scrolls instead
+(`fitFlexed()`, `flexedRows()`). Every CSS rule is scoped to
 `html.spl-fit`, and all but the package page's list to below 600px.
 Edit `dsm-fit.js` or `dsm-fit.css`, then run
 `node scripts/gen-mobile-fit.mjs`; `tests/mobile-fit.test.ts` fails when

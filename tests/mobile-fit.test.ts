@@ -1846,10 +1846,19 @@ test('card rows: panels an hbox squeezes under a card\'s width form a grid, the 
 });
 
 test('card rows: a tall card takes the full width rather than a strip', () => {
-  const { lay } = cardRow({ cards: 3 });
+  const { lay } = cardRow({ cards: 4 });
   const { boxes } = lay(400);
-  // 154 px high: a card is at least 140 px wide, so two of 194 fit in 400; the third wraps
-  assert.deepEqual(boxes.filter((b: any) => !b.component.gap).map((b: any) => [b.left, b.top]), [[0, 0], [206, 0], [0, 166]]);
+  // 154 px high: a card is at least 140 px wide, so two of 194 fit in 400 a row
+  assert.deepEqual(boxes.filter((b: any) => !b.component.gap).map((b: any) => [b.left, b.top, b.width]), [[0, 0, 194], [206, 0, 194], [0, 166, 194], [206, 166, 194]]);
+});
+
+test('card rows: a grid never leaves its last row half empty', () => {
+  const cards = (n: number) => cardRow({ cards: n }).lay(400).boxes.filter((b: any) => !b.component.gap).map((b: any) => [b.left, b.top, b.width]);
+  // Three cards (a host, its virtual machines, its storage): two over one would leave half
+  // the second row empty; one column costs a single row more
+  assert.deepEqual(cards(3), [[0, 0, 400], [0, 166, 400], [0, 332, 400]]);
+  // Five: one column would cost two rows more; the last card takes its row's width
+  assert.deepEqual(cards(5), [[0, 0, 194], [206, 0, 194], [0, 166, 194], [206, 166, 194], [0, 332, 400]]);
 });
 
 test('card rows: rows of buttons, rows that fit, and wide screens keep the desktop layout', () => {
@@ -2160,11 +2169,14 @@ test('wrapped text in a vbox: a configured height grows too, and the column scro
   const { lay, items, layout, ct } = statusHeader({ configured: true });
   const result = lay(260, 60);
   assert.deepEqual(result.boxes.map((b: any) => [b.top, b.height]), [[0, 56], [56, 4], [60, 17]]);
-  const target = { cls: new Set<string>(), getHeight: () => 60, hasClass(c: string) { return this.cls.has(c); }, toggleClass(c: string, on: boolean) { if (on) this.cls.add(c); else this.cls.delete(c); } };
+  // Ext 3's toggleClass takes no state: it flips the class
+  const target = { cls: new Set<string>(), getHeight: () => 60, hasClass(c: string) { return this.cls.has(c); }, addClass(c: string) { this.cls.add(c); }, removeClass(c: string) { this.cls.delete(c); }, toggleClass(c: string) { if (this.cls.has(c)) this.cls.delete(c); else this.cls.add(c); } };
   ct.getLayoutTarget = () => target;
   Object.assign(layout, { childBoxCache: result, innerCt: { h: 0, setHeight(h: number) { this.h = h; } } });
   layout.onLayout();
   assert.ok(target.cls.has('spl-fit-vscroll'), 'the vbox scrolls');
+  layout.onLayout();
+  assert.ok(target.cls.has('spl-fit-vscroll'), 'and still scrolls when it is laid out again');
   assert.equal(layout.innerCt.h, 77, 'over the whole column');
   assert.equal(items[0].height, 28, 'the item\'s own config is put back');
   assert.equal(items[0].minHeight, undefined);
@@ -2193,6 +2205,48 @@ test('wrapped text in a vbox: turned to a wider screen, the title gets its one-l
   // Laid out again: nothing left to put back
   titleDom.box = { ...titleDom.box, height: 28 };
   assert.equal(lay(600).boxes[0].dirtySize, false);
+});
+
+test('a vbox around a card grid gives the list under the cards its content height and scrolls instead', () => {
+  const p = page(), ext = fakeExt();
+  class BoxLayout { onLayout() {} }
+  class HBoxLayout extends BoxLayout { calculateChildBoxes() { return { boxes: [], meta: {} }; } }
+  // Ext 3's vbox: fixed heights stacked, the flexed item takes what is left
+  class VBoxLayout extends BoxLayout {
+    calculateChildBoxes(items: any[], size: { width: number; height: number }) {
+      const fixed = items.reduce((a, c) => a + (c.flex ? 0 : c.height), 0);
+      let top = 0;
+      const boxes = items.map(c => { const height = c.flex ? Math.max(0, size.height - fixed) : c.height; const box = { component: c, left: 0, top, width: size.width, height, dirtySize: false }; top += height; return box; });
+      return { boxes, meta: { nonFlexHeight: fixed } };
+    }
+  }
+  (ext.full as any).layout = { BoxLayout, HBoxLayout, VBoxLayout };
+  p.ctx.innerWidth = 390; p.ctx.screen.width = 390;
+  p.ctx.getComputedStyle = (n: any) => ({ paddingLeft: '0', paddingRight: '0', overflowX: 'visible', overflowY: 'visible', ...(n?.cs ?? {}) });
+  p.ctx.Ext = ext.full;
+  p.run(fitJs());
+  // A host's details: a list in DSM's scroller (fleXcroll), 185 px of rows, squeezed to 0 under the grid
+  const make = (rows: number) => {
+    const list = node('div', { cls: 'mcontentwrapper', box: { left: 0, top: 613, width: 310, height: 0 } }, [node('div', { cls: 'contentwrapper', box: { left: 0, top: 613, width: 310, height: rows } })]);
+    const detail = node('div', { box: { left: 0, top: 612, width: 310, height: 1 } }, [list]);
+    const items: any[] = [{ height: 126, el: { dom: node('div') } }, { height: 486, el: { dom: node('div') } }, { flex: 1, el: { dom: detail } }];
+    const ct: any = { splCardsIn: true, el: { hasClass: () => false } };
+    const layout = Object.assign(Object.create(VBoxLayout.prototype), { container: ct });
+    return { ct, items, layout, lay: () => layout.calculateChildBoxes(items, { width: 310, height: 612 }) };
+  };
+  const m = make(185);
+  const result = m.lay();
+  assert.deepEqual(result.boxes.map((b: any) => [b.top, b.height]), [[0, 126], [126, 486], [612, 186]], 'its header line and its rows');
+  assert.equal(m.ct.splFlexIn, true, 'the vbox scrolls');
+  assert.equal(m.items[2].flex, 1, 'its own config is put back');
+  assert.equal(m.items[2].height, undefined);
+  // A list longer than the vbox keeps its own scroller; a vbox with no grid, Ext's layout
+  const long = make(900);
+  assert.equal(long.lay().boxes[2].height, 0);
+  assert.equal(long.ct.splFlexIn, false);
+  const plain = make(185);
+  plain.ct.splCardsIn = false;
+  assert.equal(plain.lay().boxes[2].height, 0);
 });
 
 test('card rows: a card\'s content set wider than the card in a stylesheet stays inside it, border included', () => {
