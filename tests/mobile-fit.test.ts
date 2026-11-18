@@ -1492,7 +1492,7 @@ test('the fit stylesheet uses only DSM\'s shared component classes, never an App
     'item-summary', 'item-icon', 'item-title', 'item-toggle', 'item-wrap', // SYNO.ux.ExpandableListView rows
     'mobile-row-card-wrapper', 'field-wrapper', 'field-align-vertical', 'mobile-label', 'mobile-value', // DSM Vue's table as cards on a phone
     'actions-wrapper', // v-card's header
-    'main-wrapper', // v-toolbar
+    'main-wrapper', 'right-wrapper', // v-toolbar
     'module-list-layout', 'layout-module-list-panel', // DSM's Vue page-list window
     'body', 'cancel-icon', // DSM's Vue tour and dialog boxes
     'mcontentwrapper', 'contentwrapper', // DSM's own scroller (fleXcroll), in every Ext grid
@@ -2467,6 +2467,138 @@ test('flex rows: a row that fits only by crushing an item below what it holds wr
   const size = node('div', { box: { left: 0, top: 0, width: 30, height: 20 }, cs: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' } }, [node('div', { box: { left: 0, top: 0, width: 20, height: 20 }, text: '12' }), node('div', { box: { left: 24, top: 0, width: 17, height: 20 }, text: 'KB' })]);
   contentPage([size]);
   assert.ok(!size.cls.has('spl-fit-wrap'));
+});
+
+/** A dashboard card's header (Container Manager's overview): a title beside a CPU / Memory / Network switch */
+function cardHeader({ title = 'CPU usage (%)', titleHeight = 56, buttonRows = 2 } = {}) {
+  const t = node('div', { box: { left: 41, top: 427, width: 106, height: titleHeight }, cs: { lineHeight: '28px' }, text: title });
+  // Its text's line boxes, one per line
+  (t as any).lines = Array.from({ length: Math.round(titleHeight / 28) }, (_, i) => ({ left: 41, top: 427 + i * 28, width: 100, height: 28, right: 141, bottom: 455 + i * 28 }));
+  const buttons = ['CPU', 'Memory', 'Network'].map((label, i) => node('button', { cls: 'v-btn', box: { left: 147 + (i % 2) * 83, top: 427 + (buttonRows > 1 ? Math.floor(i / 2) * 28 : 0), width: 83, height: 28 }, cs: { display: 'inline-block' }, text: label }));
+  const group = node('div', { box: { left: 147, top: 427, width: 202, height: buttonRows * 28 }, cs: { display: 'flex' } }, [node('div', { cls: 'v-btn-group', box: { left: 147, top: 427, width: 202, height: buttonRows * 28 } }, buttons)]);
+  return node('div', { box: { left: 41, top: 427, width: 308, height: Math.max(titleHeight, buttonRows * 28) }, cs: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' } }, [t, group]);
+}
+
+/** A page whose text nodes report their line boxes (a node's `lines`, or its one box) */
+function linesPage(content: FakeNode[]) {
+  const d = dsmPage({ app: 'SYNO.SDS.StorageManager.Instance' });
+  d.p.ctx.document.createRange = () => { let owner: FakeNode; return { selectNodeContents(n: any) { owner = n.owner; }, getClientRects() { const b = owner.layout; return (owner as any).lines ?? [{ ...b, right: b.left + b.width, bottom: b.top + b.height }]; } }; };
+  return contentPageOn(d, content);
+}
+
+test('flex rows: a card header that breaks its title over two lines, or its switch over two rows, wraps', () => {
+  const contentPage = linesPage;
+  // Both squeezed (Container Manager's CPU card at 390 px)
+  const both = cardHeader();
+  contentPage([both]);
+  assert.ok(both.cls.has('spl-fit-wrap'));
+  // Only the buttons on two rows; only the title on two lines
+  const buttons = cardHeader({ titleHeight: 28 });
+  contentPage([buttons]);
+  assert.ok(buttons.cls.has('spl-fit-wrap'), 'the switch on two rows');
+  const title = cardHeader({ buttonRows: 1 });
+  contentPage([title]);
+  assert.ok(title.cls.has('spl-fit-wrap'), 'the title on two lines');
+  // Title on one line, the buttons on one row: left alone
+  const fits = cardHeader({ titleHeight: 28, buttonRows: 1 });
+  contentPage([fits]);
+  assert.ok(!fits.cls.has('spl-fit-wrap'));
+  // A paragraph beside a button is text that wraps on purpose, not a title
+  const text = cardHeader({ title: 'Images not used by any container take up space on the volume.', buttonRows: 1 });
+  contentPage([text]);
+  assert.ok(!text.cls.has('spl-fit-wrap'));
+});
+
+/** Two dashboard cards in a row that runs past its edge; once it wraps, each card is on a line of its own */
+function dashboardRow() {
+  const row = node('div', { cls: 'row', box: { left: 20, top: 16, width: 350, height: 228 }, cs: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' } });
+  const wrapped = () => row.cls.has('spl-fit-wrap');
+  // The status card spreads its icon over its height with a part that grows; its desktop height is the row's
+  const status = node('div', { box: { left: 45, top: 17, width: 300, height: 52 }, cs: { display: 'flex', flexGrow: '1' } }, [node('div', { box: { left: 113, top: 17, width: 232, height: 28 }, text: 'Healthy' })]);
+  const rows = node('div', { box: { left: 45, top: 69, width: 300, height: 71 }, cs: { flexGrow: '0' }, text: '6 containers are running' });
+  const info = node('div', { box: { left: 20, top: 16, width: 350, height: 228 }, cs: { display: 'flex', flexDirection: 'column' } }, [status, rows]);
+  const image = node('div', { box: { left: 386, top: 16, width: 320, height: 228 }, text: '15 images' });
+  Object.defineProperty(info, 'box', { get: () => wrapped() ? { left: 20, top: 16, width: 350, height: 149 } : { left: 20, top: 16, width: 350, height: 228 } });
+  Object.defineProperty(image, 'box', { get: () => wrapped() ? { left: 20, top: 173, width: 320, height: 221 } : { left: 386, top: 16, width: 320, height: 228 } });
+  row.appendChild(info); row.appendChild(image);
+  return { row, info, image };
+}
+
+test('flex rows: cards of a wrapped row each fill their line, and a card that spread its content over its height keeps it', () => {
+  const { row, info, image } = dashboardRow();
+  contentPage([row]);
+  assert.ok(row.cls.has('spl-fit-wrap'));
+  assert.ok(row.cls.has('spl-fit-wrap-fill'), 'each card on a line of its own fills it');
+  assert.ok(info.cls.has('spl-fit-tall'));
+  assert.equal(info.vars['--spl-fit-tall'], '228px', 'its desktop height');
+  assert.ok(!image.cls.has('spl-fit-tall'), 'a block card that is its content\'s height: as it is');
+  // Small items that wrapped (a legend) keep their own widths
+  const legend = legendRow();
+  contentPage([legend]);
+  assert.ok(legend.cls.has('spl-fit-wrap'));
+  assert.ok(!legend.cls.has('spl-fit-wrap-fill'));
+  const css = fitCss();
+  assert.match(css, /\.spl-fit-wrap-fill > \* \{ flex: 1 1 100% !important; width: auto !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; \}/);
+  assert.match(css, /\.spl-fit-tall \{ min-height: var\(--spl-fit-tall, 0px\) !important; \}/);
+});
+
+test('clipped pages: a page-sized box that hides its content running past its bottom scrolls, and the page in it grows', () => {
+  // Container Manager's overview: cards stacked on a phone, 1057 px of them in an 800 px box that hides overflow
+  const make = (overflowY: string) => {
+    const pageBox = node('div', { box: { left: 0, top: 0, width: 393, height: 800 }, cs: { display: 'flex', flexDirection: 'column' } }, [node('div', { box: { left: 20, top: 16, width: 350, height: 300 }, text: 'Healthy' })]);
+    pageBox.naturalHeight = 1057;
+    const box = node('div', { cls: 'container', box: { left: 0, top: 0, width: 393, height: 800 }, cs: { overflowY } }, [pageBox]);
+    box.naturalHeight = 1057;
+    return { box, pageBox };
+  };
+  const clipped = make('hidden');
+  contentPage([clipped.box]);
+  assert.ok(clipped.box.cls.has('spl-fit-page-scroll'));
+  assert.ok(clipped.pageBox.cls.has('spl-fit-grow'));
+  assert.equal(clipped.pageBox.vars['--spl-fit-min'], '800px');
+  // A box that already scrolls, or one whose content fits: left alone
+  const scrolls = make('auto');
+  contentPage([scrolls.box]);
+  assert.ok(!scrolls.box.cls.has('spl-fit-page-scroll'));
+  const fits = make('hidden');
+  fits.box.naturalHeight = 810; fits.pageBox.naturalHeight = 810;
+  contentPage([fits.box]);
+  assert.ok(!fits.box.cls.has('spl-fit-page-scroll'), 'within a few pixels');
+  // A small box (a carousel strip) that hides what overflows is the App's own
+  const strip = make('hidden');
+  strip.box.box = { left: 0, top: 0, width: 393, height: 120 };
+  contentPage([strip.box]);
+  assert.ok(!strip.box.cls.has('spl-fit-page-scroll'));
+  assert.match(fitCss(), /\.spl-fit-page-scroll \{ overflow-y: auto !important;/);
+});
+
+test('label/value cards: a column with no title loses its "undefined:" label, and a label with an empty value goes', () => {
+  const label = (text: string) => node('div', { cls: 'mobile-label', box: { left: 16, top: 65, width: 78, height: 28 }, text });
+  const blank = label('undefined\uff1a'), named = label('Name:'), empty = label('');
+  const card = node('div', { cls: 'mobile-row-card-wrapper', box: { left: 16, top: 53, width: 358, height: 83 } }, [
+    node('div', { cls: 'field-wrapper field-align-vertical', box: { left: 16, top: 65, width: 358, height: 58 }, cs: { display: 'grid' } }, [
+      blank, node('div', { cls: 'mobile-value', box: { left: 106, top: 65, width: 268, height: 54 }, text: 'nginx' }),
+      named, node('div', { cls: 'mobile-value', box: { left: 106, top: 97, width: 268, height: 28 }, text: 'ovis' }),
+      empty, node('div', { cls: 'mobile-value', box: { left: 106, top: 129, width: 268, height: 28 }, text: 'x' }),
+    ]),
+  ]);
+  contentPage([card]);
+  assert.ok(blank.cls.has('spl-fit-nolabel'));
+  assert.ok(empty.cls.has('spl-fit-nolabel'), 'a label with no text at all');
+  assert.ok(!named.cls.has('spl-fit-nolabel'));
+  const media = phoneCss();
+  assert.match(media, /\.field-align-vertical \.mobile-label\.spl-fit-nolabel \{ display: none !important; \}/);
+  assert.match(media, /\.field-align-vertical \.spl-fit-nolabel \+ \.mobile-value \{ grid-column: 1 \/ -1 !important; \}/);
+  // An action column that shows its buttons only on a desktop's hover: label and empty value go
+  assert.match(media, /\.field-align-vertical \.mobile-value:empty,\s*html\.spl-fit:not\(#spl-fit-id\) \.mobile-row-card-wrapper \.field-wrapper\.field-align-vertical \.mobile-label:has\(\+ \.mobile-value:empty\) \{ display: none !important; \}/);
+});
+
+test('vue toolbars: the buttons take what they need and the search and filter fields share the rest', () => {
+  // Container Manager's log: a 250 px filter menu and a 242 px search box crushed its Clear and Export buttons to nothing
+  const media = phoneCss();
+  assert.match(media, /\.v-toolbar > \.main-wrapper \{ flex: 0 1 auto !important; \}/);
+  assert.match(media, /\.v-toolbar > \.right-wrapper \{ flex: 1 1 0 !important; min-width: 40% !important; \}/);
+  assert.match(media, /\.v-toolbar > \.right-wrapper > \.v-textfield-wrapper,\s*html\.spl-fit:not\(#spl-fit-id\) \.v-toolbar > \.right-wrapper > \.v-select2-wrapper \{ flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; \}/);
 });
 
 /** Panes side by side drawn with flex boxes (Surveillance Station's Monitor Center): a fixed tree beside a growing view */

@@ -383,7 +383,14 @@ row taller than half the screen whose fixed panes leave the growing pane under
 60% of it becomes a column, each fixed pane a bar. Panes fold before they are
 painted: under the opening cover, and as the page adds them. A dialog whose content runs
 past its own edge wraps that row and scrolls (`sheets()`); a small box pinned over its
-lower half that the text then runs under joins the flow after it. Every CSS rule is scoped to
+lower half that the text then runs under joins the flow after it. A card header whose
+short title or switch of buttons breaks onto a second line wraps, title above the switch;
+cards of a wrapped row that each take a line fill it, and one that centred its content over
+its desktop height keeps that height (`wrappedCards()`). A page-sized box that hides
+overflow scrolls once its content runs past its bottom (`clippedPages()`). A Vue toolbar's
+buttons take what they need and its search and filter fields share the rest. DSM Vue's
+label/value cards drop an "undefined:" label (a column with no title) and a label whose
+value is empty. Every CSS rule is scoped to
 `html.spl-fit`, and all but the package page's list to below 600px.
 Edit `dsm-fit.js` or `dsm-fit.css`, then run
 `node scripts/gen-mobile-fit.mjs`; `tests/mobile-fit.test.ts` fails when
