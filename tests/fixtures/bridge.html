@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Native bridge fixture</title>
+<style>body{font:18px system-ui;padding:20px}button,a,input{display:block;margin:18px 0;padding:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere}iframe{width:100%;height:100px}</style>
+<h1>原生功能測試</h1><p id="bridge"></p>
+<button id="base64">下載 base64</button><button id="url">下載 URL</button><button id="redirect">拒絕跨來源下載</button>
+<button id="external">開啟外部網站</button><button id="take">讀取分享一次</button>
+<button id="camera">即時相機</button><input type="file" accept="image/*" capture="environment">
+<a href="/next">下一頁（測試返回）</a><a href="/form">表單（測試鍵盤）</a><a href="https://example.org/" target="_blank">外部視窗</a><a id="blob" download="fixture.txt">Blob 下載</a>
+<video autoplay playsinline muted style="width:100%"></video>
+<h2>同來源子框架</h2><iframe src="/frame"></iframe><h2>其他來源子框架</h2><iframe id="foreign"></iframe>
+<pre id="events"></pre>
+<script>
+const bridge=window.SynoPkgNative;
+document.querySelector('#bridge').textContent=bridge?'SynoPkgNative 已啟用':'沒有 bridge';
+const show=value=>document.querySelector('#events').textContent+=value+'\n';
+let serial=0;const post=m=>{if(bridge)bridge.post({v:1,...m});else show('沒有 bridge');};
+const transfer=url=>post({type:'download',id:'fixture_'+(++serial),filename:'fixture.txt',mime:'text/plain',url:new URL(url,location.href).href});
+document.querySelector('#base64').onclick=()=>post({type:'download',id:'fixture_'+(++serial),filename:'fixture.txt',mime:'text/plain',base64:'UGFja2FnZSBMYW5kCg=='});
+document.querySelector('#url').onclick=()=>transfer('/download');
+document.querySelector('#redirect').onclick=()=>transfer('/redirect');
+document.querySelector('#external').onclick=()=>post({type:'openExternal',url:'https://example.org/'});
+let intake=new URL(location.href).searchParams.get('intake');
+window.addEventListener('synopkgnative',e=>{const m=e.detail;if(m.type==='launch'){intake=m.intake;show('收到 warm launch');}else if(m.type==='reply')show('intake items: '+(m.items||[]).length);else if(m.type==='transfer')show('transfer: '+m.state);});
+document.querySelector('#take').onclick=()=>intake?post({type:'intake.take',id:intake}):show('尚未收到分享');
+document.querySelector('#camera').onclick=async()=>{try{document.querySelector('video').srcObject=await navigator.mediaDevices.getUserMedia({video:true,audio:false});show('相機已開啟');}catch(e){show('相機需要 HTTPS 或改用拍照輸入');}};
+document.querySelector('#blob').href=URL.createObjectURL(new Blob(['Package Land'],{type:'text/plain'}));
+const foreign=new URL('/frame',location.href);foreign.port=String(Number(location.port)+1);document.querySelector('#foreign').src=foreign.href;
+</script></html>

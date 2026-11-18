@@ -1,0 +1,316 @@
+/* DSM mobile fit (experimental). Every rule is scoped to html.spl-fit, which
+   only the injected script adds, and only applies below 600px. The
+   :not(#spl-fit-id) part adds ID weight so App stylesheets cannot win. */
+@media (max-width: 599px) {
+  /* Forms: stack the label above the field, keep fields inside the screen */
+  html.spl-fit:not(#spl-fit-id) .x-form-item-label {
+    float: none !important; width: auto !important; display: block;
+    padding: 0 0 4px !important; margin-left: 0 !important; white-space: normal;
+  }
+  html.spl-fit:not(#spl-fit-id) .x-form-element { padding-left: 0 !important; }
+  html.spl-fit:not(#spl-fit-id) .x-form-element > .x-form-text,
+  html.spl-fit:not(#spl-fit-id) .x-form-element > .x-form-field-wrap,
+  html.spl-fit:not(#spl-fit-id) .x-form-element > .x-form-display-field,
+  html.spl-fit:not(#spl-fit-id) .x-form-element > .x-form-composite,
+  html.spl-fit:not(#spl-fit-id) .x-form-element > textarea { max-width: 100% !important; box-sizing: border-box; }
+  html.spl-fit:not(#spl-fit-id) .x-form-element > .x-form-display-field { width: auto !important; min-width: 0 !important; white-space: normal; word-break: break-word; }
+  html.spl-fit:not(#spl-fit-id) .x-form-item { margin-bottom: 10px; }
+  html.spl-fit:not(#spl-fit-id) .x-form-check-wrap, html.spl-fit:not(#spl-fit-id) .x-form-cb-label { white-space: normal; height: auto !important; }
+  html.spl-fit:not(#spl-fit-id) .x-fieldset, html.spl-fit:not(#spl-fit-id) .x-form-item, html.spl-fit:not(#spl-fit-id) .x-panel-body { max-width: 100%; }
+
+  /* Composite rows (field + button, value + unit): wrap instead of clip */
+  html.spl-fit:not(#spl-fit-id) .x-form-element > .x-form-composite { width: auto !important; margin-left: 0 !important; }
+  html.spl-fit:not(#spl-fit-id) .x-form-composite > .x-box-inner { width: auto !important; height: auto !important; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; overflow: visible !important; }
+  html.spl-fit:not(#spl-fit-id) .x-form-composite > .x-box-inner > .x-box-item { position: static !important; left: auto !important; top: auto !important; margin-left: 0 !important; max-width: 100%; }
+  /* A field with a trigger (date, combo) keeps its button next to it when the row wraps */
+  html.spl-fit:not(#spl-fit-id) .x-form-composite > .x-box-inner > .x-box-item.x-form-field-wrap { position: relative !important; }
+
+  /* Tabs: one swipeable row instead of a clipped strip */
+  html.spl-fit:not(#spl-fit-id) .x-tab-strip-wrap { overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  html.spl-fit:not(#spl-fit-id) .x-tab-strip-wrap::-webkit-scrollbar { display: none; }
+  html.spl-fit:not(#spl-fit-id) .x-tab-strip { width: max-content !important; white-space: nowrap; }
+  html.spl-fit:not(#spl-fit-id) .x-tab-scroller-left, html.spl-fit:not(#spl-fit-id) .x-tab-scroller-right { display: none !important; }
+  html.spl-fit:not(#spl-fit-id) .x-tab-scrolling { padding-left: 0 !important; padding-right: 0 !important; }
+
+  /* Toolbars: swipe sideways rather than clip buttons */
+  html.spl-fit:not(#spl-fit-id) .x-toolbar { overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none; }
+  html.spl-fit:not(#spl-fit-id) .x-toolbar::-webkit-scrollbar { display: none; }
+  html.spl-fit:not(#spl-fit-id) .x-toolbar-ct { width: auto !important; min-width: 100%; }
+  /* Vue toolbars clip extra buttons: let them scroll the same way */
+  html.spl-fit:not(#spl-fit-id) .v-toolbar > .main-wrapper { overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none; }
+  html.spl-fit:not(#spl-fit-id) .v-toolbar > .main-wrapper::-webkit-scrollbar { display: none; }
+  /* A toolbar with more buttons past an edge fades out there (dsm-fit.js edges()) */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-more-end { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-more-start { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-more-start.spl-fit-more-end { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+
+  /* Wide grids keep their column widths and scroll sideways (see the script) */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-hscroll .x-grid3-scroller { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  /* Grids sized for a phone (dsm-fit.js sizeGrid()): headers on up to two lines,
+     cells on up to three */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-gridhead .x-grid3-hd-inner { white-space: normal !important; overflow-wrap: break-word; text-overflow: clip !important; height: auto !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap .x-grid3-cell-inner { white-space: normal !important; overflow-wrap: break-word; text-overflow: clip !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap .x-grid3-cell-inner:not(:has(div)):not(:has(table)):not(:has(ul)) { display: -webkit-box !important; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap .x-grid3-row, html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap .x-grid3-row td { height: auto !important; }
+  /* Pinned cells get a solid colour from the script (pinColumns): DSM's rows
+     are see-through. DSM's own scroll bar (fleXcroll) floats over the last
+     row: room under the rows keeps it clear. */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-hscroll .x-grid3-scroller > .mcontentwrapper > .contentwrapper { padding-bottom: 12px !important; box-sizing: border-box; }
+
+  /* Full-screen Ext dialogs: no frame, no drag handles */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-full { border-radius: 0 !important; box-shadow: none !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-full .x-resizable-handle { display: none !important; }
+
+  /* Side navigation as a menu, matching DSM's Vue page-list windows (see drawer()) */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav .spl-fit-nav-side {
+    position: absolute !important; left: 0 !important; top: 0; bottom: 0; z-index: 30; background: var(--spl-fit-nav-bg, #fff) !important;
+    width: 250px !important; max-width: calc(100% - 48px); visibility: hidden;
+  }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav .spl-fit-nav-side.x-panel > .x-panel-bwrap,
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav .spl-fit-nav-side.x-panel .x-panel-body,
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav .spl-fit-nav-side.x-panel .x-panel { width: 100% !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav .v-sm-container { position: relative; }
+  /* A tab panel whose column of tabs became the menu: the pages take its width */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-tabs { position: relative; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-tabs > .spl-fit-nav-main { width: 100% !important; margin-left: 0 !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav .v-sm-main { width: 100% !important; flex: 1 1 100% !important; }
+  /* The content next to the menu is one stacking layer, so nothing in it (rows with
+     their own z-index) is drawn over the open menu or its mask (dsm-fit.js drawer()) */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-main, html.spl-fit:not(#spl-fit-id) .spl-fit-nav .v-sm-main { isolation: isolate; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav.spl-fit-nav-open .spl-fit-nav-side { visibility: visible; }
+  /* DSM sets some icons in the menu (tree arrows) visible: keep all of it hidden while the menu is closed */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav:not(.spl-fit-nav-open) .spl-fit-nav-side * { visibility: hidden !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-mask { display: none; position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 29; background: rgba(0, 0, 0, .2); }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-open .spl-fit-nav-mask { display: block; }
+  /* Title bar: hamburger, App icon, App title, current page (Control Panel's spacing) */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav .x-window-header { position: relative; padding-left: 54px !important; background-position: 54px 8px !important; white-space: nowrap; overflow: hidden; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-toggle { position: absolute; left: 18px; top: 50%; margin-top: -12px; width: 24px; height: 24px; z-index: 2; cursor: pointer; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-toggle svg { display: block; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-open .spl-fit-nav-toggle { color: var(--v-icon-set-set13-active, #0086e5); }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-page:not(:empty)::before { content: "\203A"; margin: 0 6px; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav .x-window-header-text { display: inline !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-page { display: inline-block; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; font-size: 12px; font-weight: 400; color: rgba(65, 75, 85, .85); }
+
+  /* A side menu found in a flex row (dsm-fit.js sideNav()): the content takes the row, the
+     menu lies over it, and the row's own ::after dims the content while the menu is open */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-row { position: relative !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-row > .spl-fit-nav-main { flex: 1 1 100% !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-row > .spl-fit-nav-side { box-shadow: 0 0 12px rgba(0, 0, 0, .2); }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-row.spl-fit-nav-open::after { content: ''; position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 29; background: rgba(0, 0, 0, .2); }
+
+  /* A top or bottom region that grew to its content as far as it may scrolls the rest (dsm-fit.js hookRegions()) */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-region-scroll { overflow-y: auto !important; }
+
+  /* The splitbar of a side region that became the menu */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-nav-split { display: none !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-tool-mark { position: relative; width: 24px !important; height: 20px !important; margin-top: 0 !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-tool-mark::before {
+    content: ''; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3px 0 0 -5px;
+    border-top: 2px solid #057feb; border-left: 2px solid #057feb; transform: rotate(45deg);
+  }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-tool-mark.x-tool-expand-north::before, html.spl-fit:not(#spl-fit-id) .spl-fit-tool-mark.x-tool-collapse-south::before { transform: rotate(225deg); margin-top: -7px; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-tool-mark.x-tool-expand-west::before, html.spl-fit:not(#spl-fit-id) .spl-fit-tool-mark.x-tool-collapse-east::before { transform: rotate(135deg); margin-left: -7px; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-tool-mark.x-tool-expand-east::before, html.spl-fit:not(#spl-fit-id) .spl-fit-tool-mark.x-tool-collapse-west::before { transform: rotate(-45deg); margin-left: -3px; }
+
+  /* A vbox whose card rows became grids taller than it (dsm-fit.js hookCards()) scrolls */
+  /* Cards of a grid: content a stylesheet sets wider than the card fits inside it, border included.
+     The parts of a form field (its text box, its menu button) keep DSM's own box: a text box
+     sized with its padding outside comes out shorter than its button otherwise. */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-card .x-panel-body > *, html.spl-fit:not(#spl-fit-id) .spl-fit-card .x-panel-body > * > *:not(.x-form-field-wrap > *) { max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-vscroll { overflow-y: auto !important; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-vscroll::-webkit-scrollbar { display: none; }
+
+  /* Expandable list rows (SYNO.ux.ExpandableListView): DSM gives the summary a fixed
+     height and the App lays its columns side by side at shares of the row. On a phone
+     the row grows to its content and the columns stack under the name, full width. Each
+     holds what floats in it (a line of values side by side) rather than spilling it below */
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary { display: block !important; height: auto !important; min-height: 58px; padding-bottom: 8px; overflow: visible !important; }
+  /* The row around it grows too: an App's fixed row height leaves the stacked summary
+     over the next row's separator (DSM's own row height is auto; its details toggle on their own) */
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-wrap { height: auto !important; }
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary > :not(.item-icon):not(.item-toggle),
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary > :not(.item-icon):not(.item-toggle) > * {
+    float: none !important; position: static !important; display: flow-root; width: auto !important; max-width: 100%; height: auto !important; margin-left: 0 !important;
+  }
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary > :not(.item-icon):not(.item-toggle) * { max-width: 100%; white-space: normal !important; overflow-wrap: anywhere; }
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary .item-title { display: block; white-space: normal; overflow-wrap: anywhere; }
+
+  /* Label/value cards (DSM Vue's table on a phone, .mobile-row-card-wrapper): the vertical
+     variant puts each label over its value at a fixed height. On a phone label and value
+     share a line: the labels a column of their own width, at most 40% of the card; the
+     value left-aligned beside it, a long one wraps in its column and the row grows */
+  html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical { grid-template-columns: fit-content(40%) minmax(0, 1fr) !important; column-gap: 12px !important; row-gap: 4px !important; align-items: start; }
+  html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .mobile-label { grid-column: 1 / 2 !important; width: auto !important; height: auto !important; overflow-wrap: anywhere; }
+  html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .mobile-value { grid-column: 2 / 3 !important; height: auto !important; margin: 0 !important; min-width: 0; text-align: left; justify-content: flex-start; justify-self: stretch; overflow-wrap: anywhere; }
+  /* A value that is only a marker (a status dot centred in the stacked value) sits at the start of the label's line */
+  html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .mobile-value:has(> :empty:only-child) { display: flex !important; align-items: center; min-height: var(--v-table-mobile-row-card-line-height__field, 20px); }
+  html.spl-fit:not(#spl-fit-id) .mobile-row-card-wrapper .field-wrapper.field-align-vertical .mobile-value > :empty:only-child { margin-left: 0 !important; margin-right: 0 !important; }
+
+  /* A card header (DSM Vue's v-card) with a menu beside its title: the title keeps its words,
+     the menu gives up its desktop width (a 240 px select) and takes what is left */
+  html.spl-fit:not(#spl-fit-id) .v-card-header .v-card-title { flex-shrink: 0; max-width: 60%; }
+  html.spl-fit:not(#spl-fit-id) .v-card-header .actions-wrapper { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+  html.spl-fit:not(#spl-fit-id) .v-card-header .actions-wrapper .v-select2-wrapper { width: auto !important; max-width: 100%; min-width: 0 !important; }
+
+  /* A number and its unit ("1.2 TB", dsm-fit.js units()) never break apart */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-unit { white-space: nowrap !important; }
+
+  /* Bigger touch targets for small icon buttons and menu items */
+  html.spl-fit:not(#spl-fit-id) .x-menu-list-item { min-height: 36px; display: flex; align-items: center; }
+}
+
+/* Single-App mode (see startSingle()): App windows fill the page with no
+   title row; the shell's top bar shows the App, its menu and back. Only a
+   page DSM opened as a single App on a phone has these classes, and it stays
+   one when the phone turns sideways: these rules hold at any width. */
+html.spl-fit:not(#spl-fit-id) .spl-single-app > .x-window-tl,
+html.spl-fit:not(#spl-fit-id) .spl-single-app > .v-window-header-wrapper { display: none !important; }
+html.spl-fit:not(#spl-fit-id) .spl-single-app .x-resizable-handle { display: none !important; }
+html.spl-fit:not(#spl-fit-id) .v-window.spl-single-app {
+  left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important;
+  border-radius: 0 !important; box-shadow: none !important;
+}
+
+/* Text fields at 16px: iOS zooms the page into a smaller field as it takes the focus */
+html.spl-fit:not(#spl-fit-id) input:not([type]), html.spl-fit:not(#spl-fit-id) input[type=text], html.spl-fit:not(#spl-fit-id) input[type=search],
+html.spl-fit:not(#spl-fit-id) input[type=email], html.spl-fit:not(#spl-fit-id) input[type=url], html.spl-fit:not(#spl-fit-id) input[type=tel],
+html.spl-fit:not(#spl-fit-id) input[type=password], html.spl-fit:not(#spl-fit-id) input[type=number],
+html.spl-fit:not(#spl-fit-id) textarea, html.spl-fit:not(#spl-fit-id) select { font-size: 16px !important; }
+
+/* A dialog or a tour's intro that did not fit the phone (dsm-fit.js sheets()): centered with
+   gutters, at most the screen, scrolling inside; its text wraps and its images scale to it */
+html.spl-fit:not(#spl-fit-id) .spl-fit-sheet {
+  left: 16px !important; right: auto !important; top: var(--spl-fit-top, 16px) !important; bottom: auto !important;
+  width: calc(100% - 32px) !important; min-width: 0 !important; max-width: calc(100% - 32px) !important;
+  height: auto !important; max-height: calc(100% - 32px) !important; overflow-y: auto !important; overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain; box-sizing: border-box !important; transform: none !important;
+}
+html.spl-fit:not(#spl-fit-id) .spl-fit-sheet-pad { padding: 16px 16px 20px !important; border-radius: 12px; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-sheet-pad * { max-width: 100% !important; min-width: 0 !important; box-sizing: border-box; overflow-wrap: anywhere; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-sheet-pad > * { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-sheet-pad .body { height: auto !important; }
+html.spl-fit.spl-fit-modal:not(#spl-fit-id) .module-list-layout.layout-module-list-panel,
+html.spl-fit.spl-fit-modal:not(#spl-fit-id) .spl-fit-nav-side { visibility: hidden !important; pointer-events: none !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-sheet img, html.spl-fit:not(#spl-fit-id) .spl-fit-sheet video { max-width: 100% !important; height: auto !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-sheet-pad .cancel-icon { position: absolute !important; right: 12px !important; top: 12px !important; left: auto !important; }
+
+/* A warm page's first App under a hosted App (dsm-fit.js launch()) */
+html.spl-fit:not(#spl-fit-id) .spl-fit-under { visibility: hidden !important; }
+
+/* Squeezed layouts (dsm-fit.js repair()): only the script adds these classes, in single-App mode.
+   A flex row whose items ran past its edge wraps */
+html.spl-fit:not(#spl-fit-id) .spl-fit-wrap { flex-wrap: wrap !important; row-gap: 8px; }
+/* A box wider than its room: capped at it (--spl-fit-cap), long words break */
+html.spl-fit:not(#spl-fit-id) .spl-fit-cap { max-width: var(--spl-fit-cap, 100%) !important; min-width: 0 !important; box-sizing: border-box !important; overflow-wrap: anywhere; }
+/* A row that crushed a text: its boxes stack, each the full width */
+html.spl-fit:not(#spl-fit-id) .spl-fit-stack > * { float: none !important; width: auto !important; max-width: 100% !important; margin-left: 0 !important; overflow-wrap: anywhere; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-stack-flex { flex-wrap: wrap !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-stack-flex > * { flex: 1 1 100% !important; max-width: 100% !important; min-width: 0 !important; overflow-wrap: anywhere; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-stack-grid { grid-template-columns: minmax(0, 1fr) !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-stack-grid > * { grid-column: auto !important; grid-row: auto !important; overflow-wrap: anywhere; }
+
+/* A main panel padded for a desktop window (dsm-fit.js gutters): phone gutters, the full width */
+html.spl-fit:not(#spl-fit-id) .spl-fit-gutter { padding-left: 12px !important; padding-right: 12px !important; margin-left: 0 !important; margin-right: 0 !important; width: auto !important; min-width: 0 !important; }
+
+/* A floated card whose content needs more than its share of the row (dsm-fit.js floatCards): the row's full width */
+html.spl-fit:not(#spl-fit-id) .spl-fit-fill { float: none !important; width: auto !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-fill .spl-fit-fill-in { width: auto !important; }
+/* Rows of fixed boxes that line up as a table: each row keeps its width (--spl-fit-row), scaled to the room (--spl-fit-zoom), or the box they sit in scrolls */
+html.spl-fit:not(#spl-fit-id) .spl-fit-rows-row { min-width: var(--spl-fit-row) !important; box-sizing: border-box !important; zoom: var(--spl-fit-zoom, 1); }
+html.spl-fit:not(#spl-fit-id) .spl-fit-rows-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+/* An item of a column (Ext vbox) wider than the screen: capped at it; a picture drawn as its background shrinks with it */
+html.spl-fit:not(#spl-fit-id) .spl-fit-col { max-width: var(--spl-fit-cap, 100vw) !important; min-width: 0 !important; box-sizing: border-box !important; overflow-wrap: anywhere; background-size: contain !important; background-position: center !important; background-repeat: no-repeat !important; }
+
+/* A box with a stylesheet height that spilled over what follows grows to its content (dsm-fit.js findSpills) */
+html.spl-fit:not(#spl-fit-id) .spl-fit-grow { height: auto !important; min-height: var(--spl-fit-min, 0px) !important; }
+/* A hidden window keeps its desktop size and place (Ext hides it with
+   visibility): out of the page's scroll width, so the App does not scroll
+   sideways into blank space. Fixed at the same place: the page sits at 0,0. */
+html.spl-fit:not(#spl-fit-id) .sds-standalone-desktop > .x-window[style*="visibility: hidden"] { position: fixed !important; }
+
+/* Content kept at a readable width (dsm-fit.js keepWide): the host's body is
+   the one sideways scroller; title, toolbars, footer buttons and the side
+   menu sit outside it. Only the script adds the class, only on a phone. */
+html.spl-fit:not(#spl-fit-id) .spl-fit-wide { overflow-x: auto !important; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+
+/* Oversized content in single-App mode (dsm-fit.js): only the script adds
+   these classes, and only on a page that is a single App. */
+/* A graphic scaled to its box: its footprint shrinks with it (negative margins) */
+html.spl-fit:not(#spl-fit-id) .spl-fit-scaled {
+  transform: translateX(var(--spl-fit-x, 0px)) scale(var(--spl-fit-s, 1)) !important; transform-origin: 0 0 !important;
+  margin-right: var(--spl-fit-mr, 0px) !important; margin-bottom: var(--spl-fit-mb, 0px) !important;
+}
+/* Too small to read when scaled: the box scrolls sideways instead */
+html.spl-fit:not(#spl-fit-id) .spl-fit-pan { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+/* Desktop-column text on a header's text: on its own line, and the header grows to hold it */
+html.spl-fit:not(#spl-fit-id) .spl-fit-reflow {
+  position: static !important; left: auto !important; top: auto !important; right: auto !important; bottom: auto !important;
+  display: block !important; max-width: 100%; white-space: normal !important; transform: none !important;
+}
+html.spl-fit:not(#spl-fit-id) .spl-fit-reflow-row { flex-wrap: wrap !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-reflow-row > .spl-fit-reflow { flex: 0 0 100% !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-reflow-grow { height: auto !important; }
+/* The expand button and the viewer */
+html.spl-fit:not(#spl-fit-id) .spl-fit-layer { position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: 2147483000; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-expand,
+html.spl-fit:not(#spl-fit-id) .spl-fit-viewer-close {
+  position: absolute; width: 28px; height: 28px; padding: 0; margin: 0; border: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  background: rgba(255, 255, 255, .94); color: #414b55; box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+}
+html.spl-fit:not(#spl-fit-id) .spl-fit-expand[hidden] { display: none; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-expand::after { content: ''; position: absolute; left: -8px; top: -8px; right: -8px; bottom: -8px; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-viewer { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2147483001; background: #f2f4f5; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-viewer-pan { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: auto; display: flex; touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-viewer-sizer { position: relative; margin: auto; flex: none; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-viewer-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; text-align: left; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-viewer .spl-fit-chain {
+  display: block !important; position: static !important; width: auto !important; height: auto !important; min-width: 0 !important; min-height: 0 !important;
+  max-width: none !important; max-height: none !important; margin: 0 !important; padding: 0 !important; border: 0 !important;
+  box-shadow: none !important; background: none !important; overflow: visible !important; transform: none !important; visibility: visible !important;
+  flex: none !important; text-align: left !important;
+}
+html.spl-fit:not(#spl-fit-id) .spl-fit-viewer .spl-fit-viewer-copy { position: relative !important; left: 0 !important; top: 0 !important; margin: 0 !important; transform: none !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-viewer-close { right: 12px; top: 12px; width: 36px; height: 36px; z-index: 1; }
+/* A grid row's detail (dsm-fit.js rowSheet()): a button on the tapped row when
+   some of it is cut off, and a sheet from the bottom with every column */
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowinfo {
+  position: absolute; width: 28px; height: 28px; padding: 0; margin: 0; border: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  background: rgba(255, 255, 255, .96); color: #057feb; box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+}
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowinfo[hidden] { display: none; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowinfo::after { content: ''; position: absolute; left: -8px; top: -8px; right: -8px; bottom: -8px; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowsheet-back { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2147483001; background: rgba(0, 0, 0, .32); }
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowsheet {
+  position: fixed; left: 0; right: 0; top: auto; bottom: 0; z-index: 2147483002; max-height: 75%; width: auto; height: auto; margin: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  box-sizing: border-box; padding: 10px 16px calc(20px + env(safe-area-inset-bottom)); background: #fff; color: #414b55;
+  border-radius: 14px 14px 0 0; box-shadow: 0 -2px 14px rgba(0, 0, 0, .2); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  animation: spl-fit-rowsheet-up .18s ease-out; text-align: left;
+}
+@keyframes spl-fit-rowsheet-up { from { transform: translateY(100%); } }
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowsheet-grip { width: 36px; height: 4px; border-radius: 2px; background: #c8cdd2; margin: 0 auto 6px; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowsheet-close { position: absolute; right: 10px; top: 8px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: #f2f4f5; color: #414b55; display: flex; align-items: center; justify-content: center; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowsheet dl { margin: 0; padding: 0 36px 0 0; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowsheet dt { margin: 12px 0 0; font-size: 12px; color: #86909a; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-rowsheet dd { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+
+/* An embedded desktop (dsm-fit.js embeddedDesk()): a package page running DSM's desktop. Its
+   taskbar, desktop icons, wallpaper and app view (with its dark backdrop) are out of sight; the
+   app view's Apps are a list under the App windows, shown while no App is */
+html.spl-fit:not(#spl-fit-id) body.spl-fit-desk #sds-taskbar,
+html.spl-fit:not(#spl-fit-id) body.spl-fit-desk #sds-taskbar-shadow,
+html.spl-fit:not(#spl-fit-id) body.spl-fit-desk #sds-appview,
+html.spl-fit:not(#spl-fit-id) body.spl-fit-desk #sds-wallpaper,
+html.spl-fit:not(#spl-fit-id) body.spl-fit-desk .sds-desktop-shortcut { display: none !important; }
+/* Its desktop, where the App windows are, starts at the top instead of below the hidden taskbar */
+html.spl-fit:not(#spl-fit-id) body.spl-fit-desk #sds-desktop { top: 0 !important; height: 100% !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-launcher { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #f4f6f9; padding: 8px 0 24px; box-sizing: border-box; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-launcher[hidden] { display: none !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-launcher-item { display: flex; align-items: center; gap: 14px; width: calc(100% - 24px); min-height: 60px; margin: 0 12px; padding: 8px 12px; border: 0; border-bottom: 1px solid #e3e7ec; background: #fff; color: #1f2329; font: 16px/1.3 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; text-align: left; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-launcher-item:first-child { border-radius: 12px 12px 0 0; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-launcher-item:last-child { border-radius: 0 0 12px 12px; border-bottom: 0; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-launcher-item:only-child { border-radius: 12px; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-launcher-item:active { background: #e8eef7; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-launcher-item img { width: 40px; height: 40px; flex: none; object-fit: contain; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-launcher-item span { flex: 1; min-width: 0; overflow-wrap: anywhere; }

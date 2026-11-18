@@ -1,0 +1,13 @@
+{
+  "appId": "com.synopkgland.mobile",
+  "name": "Package Land",
+  "version": "0.3.2",
+  "versionCode": 6,
+  "scheme": "synopkgland",
+  "assets": {},
+  "mode": "launcher",
+  "intakeSchemes": [
+    "magnet",
+    "ed2k"
+  ]
+}

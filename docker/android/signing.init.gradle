@@ -1,0 +1,14 @@
+// Secrets stay in files, never process arguments or committed Gradle properties
+allprojects {
+  afterEvaluate { p ->
+    if (p.plugins.hasPlugin('com.android.application')) {
+      def password = new File('/keystore/password').text.trim()
+      def signing = p.android.signingConfigs.maybeCreate('release')
+      signing.storeFile = new File('/keystore/package-land-release.keystore')
+      signing.storePassword = password
+      signing.keyAlias = 'package-land'
+      signing.keyPassword = password
+      p.android.buildTypes.release.signingConfig = signing
+    }
+  }
+}

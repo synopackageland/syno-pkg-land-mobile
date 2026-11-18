@@ -1,0 +1,22 @@
+{
+  "payload": {
+    "v": 1,
+    "name": "DiskStation",
+    "urls": [
+      {
+        "url": "https://192.168.1.10:5001",
+        "kind": "lan",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      },
+      {
+        "url": "https://nas.example.com",
+        "kind": "cf"
+      },
+      {
+        "url": "https://nas.netbird.example:5001",
+        "kind": "netbird"
+      }
+    ]
+  },
+  "qr": "synopkgland://add-nas#eyJ2IjoxLCJuYW1lIjoiRGlza1N0YXRpb24iLCJ1cmxzIjpbeyJ1cmwiOiJodHRwczovLzE5Mi4xNjguMS4xMDo1MDAxIiwia2luZCI6ImxhbiIsInNoYTI1NiI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYifSx7InVybCI6Imh0dHBzOi8vbmFzLmV4YW1wbGUuY29tIiwia2luZCI6ImNmIn0seyJ1cmwiOiJodHRwczovL25hcy5uZXRiaXJkLmV4YW1wbGU6NTAwMSIsImtpbmQiOiJuZXRiaXJkIn1dfQ"
+}

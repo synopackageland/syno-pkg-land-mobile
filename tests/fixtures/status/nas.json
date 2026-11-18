@@ -1,0 +1,380 @@
+{
+ "util": {
+  "cpu": {
+   "15min_load": 27,
+   "1min_load": 33,
+   "5min_load": 35,
+   "device": "System",
+   "other_load": 1,
+   "system_load": 0,
+   "user_load": 1
+  },
+  "disk": {
+   "disk": [
+    {
+     "device": "sata1",
+     "display_name": "Drive 1",
+     "read_access": 0,
+     "read_byte": 43756,
+     "type": "internal",
+     "utilization": 0,
+     "write_access": 3,
+     "write_byte": 58415
+    }
+   ],
+   "total": {
+    "device": "total",
+    "read_access": 0,
+    "read_byte": 43756,
+    "utilization": 0,
+    "write_access": 3,
+    "write_byte": 58415
+   }
+  },
+  "lun": [
+   {
+    "deferred_cmd_cnt": 0,
+    "lun_name": "LUN-1",
+    "read_avg_cmd_size": 0,
+    "read_avg_latency": 0,
+    "read_iops": 0,
+    "read_throughput": 0,
+    "rx_avg_latency": 0,
+    "total_io_latency": 0,
+    "total_iops": 0,
+    "total_throughput": 0,
+    "tx_avg_latency": 0,
+    "uuid": "00000000-0000-0000-0000-000000000000",
+    "write_avg_cmd_size": 0,
+    "write_avg_latency": 0,
+    "write_iops": 0,
+    "write_throughput": 0
+   }
+  ],
+  "memory": {
+   "avail_real": 152852,
+   "avail_swap": 1699188,
+   "buffer": 6656,
+   "cached": 817336,
+   "device": "Memory",
+   "memory_size": 2097152,
+   "real_usage": 50,
+   "si_disk": 0,
+   "so_disk": 0,
+   "swap_usage": 48,
+   "total_real": 1988008,
+   "total_swap": 3293100
+  },
+  "network": [
+   {
+    "device": "total",
+    "rx": 4544,
+    "tx": 1927
+   },
+   {
+    "device": "eth0",
+    "rx": 4544,
+    "tx": 1927
+   },
+   {
+    "device": "eth1",
+    "rx": 0,
+    "tx": 0
+   },
+   {
+    "device": "eth2",
+    "rx": 0,
+    "tx": 0
+   },
+   {
+    "device": "eth3",
+    "rx": 0,
+    "tx": 0
+   }
+  ],
+  "nfs": [],
+  "smb": {
+   "smb_cmd": [],
+   "smb_cpu": [],
+   "smb_rwpkt": []
+  },
+  "space": {
+   "total": {
+    "device": "total",
+    "read_access": 0,
+    "read_byte": 32934,
+    "utilization": 0,
+    "write_access": 3,
+    "write_byte": 54455
+   },
+   "volume": [
+    {
+     "device": "dm-1",
+     "display_name": "volume1",
+     "read_access": 0,
+     "read_byte": 32934,
+     "utilization": 0,
+     "write_access": 3,
+     "write_byte": 54455
+    }
+   ]
+  },
+  "time": 1794366552
+ },
+ "overview": {
+  "cpu_clock_speed": 2200,
+  "cpu_cores": "4",
+  "cpu_family": "Ryzen",
+  "cpu_series": "V1500B",
+  "cpu_vendor": "AMD",
+  "enabled_ntp": true,
+  "external_pci_slot_info": [
+   {
+    "Occupied": "no",
+    "Recognized": "no",
+    "cardName": "-",
+    "slot": "1"
+   }
+  ],
+  "firmware_date": "2026/07/22",
+  "firmware_ver": "DSM 7.4.1-90080",
+  "model": "RS822+",
+  "ntp_server": "ntp.example.com",
+  "ram_size": 2048,
+  "sata_dev": [],
+  "serial": "SERIAL0001",
+  "support_esata": "yes",
+  "sys_temp": 42,
+  "sys_tempwarn": false,
+  "systempwarn": false,
+  "temperature_warning": false,
+  "time": "2026-11-11 11:09:12",
+  "time_zone": "Taipei",
+  "time_zone_desc": "(GMT+08:00) Taipei",
+  "up_time": "114:33:5",
+  "usb_dev": []
+ },
+ "health": {
+  "disks": [
+   {
+    "container": {
+     "order": 0,
+     "str": "RS822+",
+     "supportPwrBtnDisable": false,
+     "type": "internal"
+    },
+    "device": "/dev/sata1",
+    "diskType": "SATA",
+    "disk_location": "Main",
+    "firm": "MJAOA5E0",
+    "id": "sata1",
+    "isSsd": false,
+    "longName": "Drive 1",
+    "model": "HDN724040ALE640",
+    "name": "Drive 1",
+    "num_id": 1,
+    "order": 1,
+    "overview_status": "normal",
+    "remain_life_danger": false,
+    "size_total": "4000787030016",
+    "smart_status": "normal",
+    "status": "data_detected",
+    "temp": 42,
+    "vendor": "HGST    "
+   }
+  ],
+  "optime": "114:33:5",
+  "nif": [
+   {
+    "addr": "192.0.2.10",
+    "duplex": true,
+    "id": "ovs_eth0",
+    "mac": "00-11-32-00-00-01",
+    "mask": "192.0.2.10",
+    "mtu": 1500,
+    "speed": 1000,
+    "status": "connected",
+    "type": "ovseth",
+    "use_dhcp": true
+   },
+   {
+    "addr": "192.0.2.10",
+    "duplex": true,
+    "id": "ovs_eth1",
+    "mac": "00-11-32-00-00-01",
+    "mask": "192.0.2.10",
+    "mtu": 1500,
+    "speed": -1,
+    "status": "disconnected",
+    "type": "ovseth",
+    "use_dhcp": true
+   },
+   {
+    "addr": "192.0.2.10",
+    "duplex": true,
+    "id": "ovs_eth2",
+    "mac": "00-11-32-00-00-01",
+    "mask": "192.0.2.10",
+    "mtu": 1500,
+    "speed": -1,
+    "status": "disconnected",
+    "type": "ovseth",
+    "use_dhcp": true
+   },
+   {
+    "addr": "192.0.2.10",
+    "duplex": true,
+    "id": "ovs_eth3",
+    "mac": "00-11-32-00-00-01",
+    "mask": "192.0.2.10",
+    "mtu": 1500,
+    "speed": -1,
+    "status": "disconnected",
+    "type": "ovseth",
+    "use_dhcp": true
+   }
+  ],
+  "temperature_warning": false,
+  "is_system_crashed": false,
+  "systempwarn": false
+ },
+ "storage": {
+  "volumes": [
+   {
+    "fs_type": "btrfs",
+    "id": "volume_1",
+    "size": {
+     "free_inode": "0",
+     "total": "3830198149120",
+     "total_device": "3989789736960",
+     "total_inode": "0",
+     "used": "22667333632"
+    },
+    "status": "normal",
+    "summary_status": "normal",
+    "vol_path": "/volume1"
+   }
+  ]
+ },
+ "notify": {
+  "items": [
+   {
+    "bindEvt": true,
+    "className": "",
+    "fn": [],
+    "hasMail": true,
+    "isEncoded": true,
+    "level": "NOTIFICATION_ERROR",
+    "mailType": "html",
+    "msg": [
+     "{\"%1%\":\"app-db-1\",\"%DATE%\":\"2026-11-09\",\"%HOSTNAME%\":\"nas-example\",\"%OSNAME%\":\"DSM\",\"%TIME%\":\"23:11\"}"
+    ],
+    "notifyId": 3489,
+    "tag": "",
+    "time": 1794237121,
+    "title": "docker_container_unexpected_exit"
+   },
+   {
+    "bindEvt": true,
+    "className": "",
+    "fn": [],
+    "hasMail": true,
+    "isEncoded": true,
+    "level": "NOTIFICATION_ERROR",
+    "mailType": "html",
+    "msg": [
+     "{\"%1%\":\"app-db-1\",\"%DATE%\":\"2026-11-09\",\"%HOSTNAME%\":\"nas-example\",\"%OSNAME%\":\"DSM\",\"%TIME%\":\"23:09\"}"
+    ],
+    "notifyId": 3486,
+    "tag": "",
+    "time": 1794236990,
+    "title": "docker_container_unexpected_exit"
+   },
+   {
+    "bindEvt": true,
+    "className": "",
+    "fn": [],
+    "hasMail": true,
+    "isEncoded": true,
+    "level": "NOTIFICATION_ERROR",
+    "mailType": "html",
+    "msg": [
+     "{\"%1%\":\"app-db-1\",\"%DATE%\":\"2026-11-09\",\"%HOSTNAME%\":\"nas-example\",\"%OSNAME%\":\"DSM\",\"%TIME%\":\"23:08\"}"
+    ],
+    "notifyId": 3483,
+    "tag": "",
+    "time": 1794236928,
+    "title": "docker_container_unexpected_exit"
+   },
+   {
+    "bindEvt": true,
+    "className": "",
+    "fn": [],
+    "hasMail": true,
+    "isEncoded": true,
+    "level": "NOTIFICATION_ERROR",
+    "mailType": "html",
+    "msg": [
+     "{\"%1%\":\"app-db-1\",\"%DATE%\":\"2026-11-09\",\"%HOSTNAME%\":\"nas-example\",\"%OSNAME%\":\"DSM\",\"%TIME%\":\"23:07\"}"
+    ],
+    "notifyId": 3480,
+    "tag": "",
+    "time": 1794236865,
+    "title": "docker_container_unexpected_exit"
+   }
+  ],
+  "newestMsgTime": 1794237121,
+  "total": 30
+ },
+ "strings": {
+  "docker_container_unexpected_exit": {
+   "level": "NOTIFICATION_ERROR",
+   "msg": "Container %1% stopped unexpectedly. Go to Container Manager for more information",
+   "title": "Container Manager"
+  }
+ },
+ "user": {
+  "Session": {
+   "user": "normal-user",
+   "is_admin": false,
+   "hostname": "nas-example"
+  }
+ },
+ "lastRead": {
+  "SYNO.SDS.DSMNotify.Tray": {
+   "lastRead": 1794236928
+  }
+ },
+ "compoundNormal": {
+  "has_fail": true,
+  "result": [
+   {
+    "api": "SYNO.Core.System.Utilization",
+    "error": {
+     "code": 105
+    },
+    "method": "get",
+    "success": false,
+    "version": 1
+   },
+   {
+    "api": "SYNO.Core.System",
+    "error": {
+     "code": 1006
+    },
+    "method": "info",
+    "success": false,
+    "version": 1
+   },
+   {
+    "api": "SYNO.Storage.CGI.Storage",
+    "error": {
+     "code": 105
+    },
+    "method": "load_info",
+    "success": false,
+    "version": 1
+   }
+  ]
+ }
+}
