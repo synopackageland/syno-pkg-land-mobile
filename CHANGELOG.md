@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Text fields (sign-in, Add NAS, the browser page's Add NAS) show focus on the whole rounded field: its edge and icon turn the accent colour. Before, the browser drew its own square ring around the text area only, beside the icon. Every boxed field now shares one component, so the icon, text and buttons sit at the same spacing in each.
 - Opening an App inside a package page that runs its own DSM desktop (Surveillance Station's Monitor Center, Recording, IP Camera, Log and so on) responds at once, as on DSM's desktop: the App's icon with a turning arc and its name show on the tap, and fade into the App when its window is ready. Back while it opens cancels it. The arc has no grey track and stays still with reduced motion.
 - A DSM App that is slow to open in the warm page keeps opening there instead of being restarted in a page of its own after 8 s, which booted DSM again. "Still opening" now offers Back as well as Reopen, in the Android App and the browser page.
 - The Android App prepares a new App view's bridge, fit and insets together, so its page starts loading sooner after the tap.

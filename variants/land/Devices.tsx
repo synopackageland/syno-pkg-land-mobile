@@ -7,7 +7,7 @@ import { mobileFitOn } from '../../src/core/webview/mobile-fit';
 import { causeText, fill, strings, type Strings } from '../../src/core/i18n/strings';
 import type { StatusSnapshot } from '../../src/core/status/model';
 import { statusStorage } from '../../src/core/status/storage';
-import { Banner, Chevron, ConfirmSheet, Icon, IconButton, PrimaryButton, Row, Section, Separator, Sheet, TextButton, TopBar, useBarInsets, useCollapsingBar, BarContent, useBlurTarget, type BlurTarget, type IconName } from './ui';
+import { Banner, Chevron, ConfirmSheet, Icon, IconButton, PrimaryButton, Row, Section, Separator, Sheet, TextButton, TopBar, noWebOutline, useBarInsets, useCollapsingBar, BarContent, useBlurTarget, type BlurTarget, type IconName } from './ui';
 import { CertBadge, certColor, certIcon, savedCert } from './cert';
 import { colors, layout, radius, spacing, type } from './theme';
 import { singleNas } from '../../src/core/platform';
@@ -145,7 +145,7 @@ export function DeviceDetail({ profile, active, signedIn, busy, prober, onBack, 
       <View style={{ alignItems: 'center', gap: spacing.sm, paddingHorizontal: layout.gutter }}>
         <Pressable onLongPress={() => { Native.haptic('long'); onActions(); }} accessibilityRole="button" accessibilityLabel={t.more} hitSlop={8}><DeviceIcon profile={profile} size={64} /></Pressable>
         {editing ? <TextInput value={name} onChangeText={setName} onSubmitEditing={commitName} onBlur={commitName} autoFocus accessibilityLabel={t.name} returnKeyType="done"
-          style={[type.hero, { minWidth: 200, textAlign: 'center', borderBottomWidth: 2, borderBottomColor: colors.accent, paddingVertical: spacing.xs }]} />
+          style={[type.hero, { minWidth: 200, textAlign: 'center', borderBottomWidth: 2, borderBottomColor: colors.accent, paddingVertical: spacing.xs }, noWebOutline]} />
           : <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={[type.hero, { textAlign: 'center', flexShrink: 1 }]} selectable>{profile.name}</Text>
             {singleNas ? null : <IconButton icon="edit" label={t.rename} color={colors.secondary} onPress={() => setEditing(true)} />}

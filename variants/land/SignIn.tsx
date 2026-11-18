@@ -7,7 +7,7 @@ import { SESSION_DATA_PATH, SignInFlow, deviceLabel, type FallbackReason } from 
 import { installId } from '../../src/core/session/storage';
 import { desktopPreset } from '../../src/core/webview/policy';
 import { fill, strings, type Strings } from '../../src/core/i18n/strings';
-import { Banner, BarContent, Icon, IconButton, PrimaryButton, TextButton, TopBar, useBarInsets, useBlurTarget } from './ui';
+import { Banner, BarContent, Icon, IconButton, PrimaryButton, TextButton, TextField, TopBar, noWebOutline, useBarInsets, useBlurTarget } from './ui';
 import { DeviceIcon } from './Devices';
 import { colors, layout, radius, spacing, type } from './theme';
 import { landConfig } from './config';
@@ -68,7 +68,6 @@ export function SignIn({ profile, onClose, onSignedIn, onWeb, onDetails }: Props
   })() : null;
   const fallback = state.fallback ? <Banner tone="warning" title={fallbackText(t, state.fallback)} detail={t.webDetail} /> : null;
   const invalid = state.error?.error === 'wrongPassword';
-  const field = (focusColor: boolean) => ({ flexDirection: 'row' as const, alignItems: 'center' as const, minHeight: 48, paddingLeft: spacing.md, borderRadius: radius.md, backgroundColor: colors.grouped, borderWidth: 2, borderColor: focusColor ? colors.danger : 'transparent' });
 
   const header = (icon?: 'phonelink-lock') => <View style={{ alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm }}>
     {icon ? <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}><Icon name={icon} size={32} color={colors.accent} /></View> : <DeviceIcon profile={profile} size={64} />}
@@ -83,19 +82,13 @@ export function SignIn({ profile, onClose, onSignedIn, onWeb, onDetails }: Props
   const passwordStep = <View style={{ gap: spacing.md }}>
     {header()}
     {fallback}{error}
-    <View style={field(false)}>
-      <Icon name="person-outline" size={20} color={colors.secondary} />
-      <TextInput accessibilityLabel={t.accountField} placeholder={t.accountField} placeholderTextColor={colors.tertiary} value={account} onChangeText={value => { setAccount(value); flow.dismiss(); }}
-        autoFocus={!account} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" returnKeyType="next" editable={!state.busy}
-        onSubmitEditing={() => passwordRef.current?.focus()} submitBehavior="submit" style={[type.input, { flex: 1, minHeight: 48, paddingHorizontal: spacing.md }]} />
-    </View>
-    <View style={field(invalid)}>
-      <Icon name="lock-outline" size={20} color={colors.secondary} />
-      <TextInput ref={passwordRef} accessibilityLabel={t.password} placeholder={t.password} placeholderTextColor={colors.tertiary} value={password} onChangeText={value => { setPassword(value); flow.dismiss(); }}
-        secureTextEntry={!reveal} autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="go" editable={!state.busy}
-        onSubmitEditing={() => void submit()} style={[type.input, { flex: 1, minHeight: 48, paddingHorizontal: spacing.md }]} />
-      <IconButton icon={reveal ? 'visibility-off' : 'visibility'} label={reveal ? t.hidePassword : t.showPassword} color={colors.tertiary} onPress={() => setReveal(value => !value)} />
-    </View>
+    <TextField icon="person-outline" accessibilityLabel={t.accountField} placeholder={t.accountField} value={account} onChangeText={value => { setAccount(value); flow.dismiss(); }}
+      autoFocus={!account} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" returnKeyType="next" editable={!state.busy}
+      onSubmitEditing={() => passwordRef.current?.focus()} submitBehavior="submit" />
+    <TextField icon="lock-outline" invalid={invalid} inputRef={passwordRef} accessibilityLabel={t.password} placeholder={t.password} value={password} onChangeText={value => { setPassword(value); flow.dismiss(); }}
+      secureTextEntry={!reveal} autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="go" editable={!state.busy}
+      onSubmitEditing={() => void submit()}
+      trailing={<IconButton icon={reveal ? 'visibility-off' : 'visibility'} label={reveal ? t.hidePassword : t.showPassword} color={colors.tertiary} onPress={() => setReveal(value => !value)} />} />
     <Pressable onPress={() => setKeep(value => !value)} accessibilityRole="switch" accessibilityState={{ checked: keep }} accessibilityLabel={t.keepSignedIn}
       style={{ minHeight: layout.hit, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xs }}>
       <Text style={[type.body, { flex: 1 }]}>{t.keepSignedIn}</Text>
@@ -115,7 +108,7 @@ export function SignIn({ profile, onClose, onSignedIn, onWeb, onDetails }: Props
       {/* One real input under the boxes keeps paste and SMS/autofill codes working */}
       <TextInput ref={codeRef} value={code} onChangeText={changeCode} autoFocus keyboardType="number-pad" autoComplete="one-time-code" textContentType="oneTimeCode" maxLength={6} editable={!state.busy}
         accessibilityLabel={t.code} caretHidden selectionColor="transparent" underlineColorAndroid="transparent"
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.02, color: 'transparent', fontSize: type.input.fontSize }} />
+        style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.02, color: 'transparent', fontSize: type.input.fontSize }, noWebOutline]} />
     </Pressable>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs }}>
       <Icon name="verified-user" size={16} color={colors.success} />

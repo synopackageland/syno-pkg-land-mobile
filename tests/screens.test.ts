@@ -22,7 +22,7 @@ const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(done =
 // Values built inside the component sandbox come from another realm
 const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 // UI primitives are rendered as named elements so tests read their props directly
-const ui = Object.fromEntries(['Banner', 'Icon', 'IconButton', 'PrimaryButton', 'Row', 'Separator', 'TextButton', 'TopBar', 'Chevron', 'ConfirmSheet', 'Section', 'Sheet', 'EmptyState', 'Skeleton', 'TabBar', 'BarContent'].map(name => [name, name]));
+const ui = Object.fromEntries(['Banner', 'Icon', 'IconButton', 'PrimaryButton', 'Row', 'Separator', 'TextButton', 'TopBar', 'Chevron', 'ConfirmSheet', 'Section', 'Sheet', 'EmptyState', 'Skeleton', 'TabBar', 'BarContent', 'TextField'].map(name => [name, name]));
 const uiStub = { ...ui, useBlurTarget: () => ({ current: null }), useBarInsets: () => ({ top: 44, bottom: 52, rawBottom: 0 }), useCollapsingBar: () => ({ hidden: false, onScroll() {} }) };
 const certStub = { CertBadge: 'CertBadge', TrustSheet: 'TrustSheet', certIcon: () => 'lock', certColor: () => '#000', savedCert: (origin: string, sha256?: string) => origin.startsWith('http:') ? 'http' : sha256 ? 'pinned' : 'trusted' };
 const i18n = { strings: () => t, fill, causeText };
@@ -48,8 +48,8 @@ function addScreen(answers: Record<string, ProbeResponse | Promise<ProbeResponse
   const primary = () => page.elements('PrimaryButton')[0]?.props;
   const text = () => page.elements('Text').map(e => e.props.children).flat(3).filter(v => typeof v === 'string').join(' | ');
   const submit = async (value: string) => {
-    page.elements('TextInput')[0].props.onChangeText(value); render();
-    page.elements('TextInput')[0].props.onSubmitEditing(); await flush(); render(); render();
+    page.elements('TextField')[0].props.onChangeText(value); render();
+    page.elements('TextField')[0].props.onSubmitEditing(); await flush(); render(); render();
   };
   return { page, render, primary, text, submit, saved, qrs, cancelled: p.cancelled, prober: p.instance, requests: () => requests };
 }
@@ -59,7 +59,7 @@ test('typing never probes; Test connection starts a cancellable probe that ignor
   let answer!: (value: ProbeResponse) => void;
   const s = addScreen({ 'https://nas.example.com:5001/webapi/query.cgi?api=SYNO.API.Info&version=1&method=query&query=SYNO.API.Auth': new Promise(done => { answer = done; }) });
   s.render();
-  s.page.elements('TextInput')[0].props.onChangeText('nas.example.com'); s.render();
+  s.page.elements('TextField')[0].props.onChangeText('nas.example.com'); s.render();
   s.page.timers(); s.render();
   assert.equal(s.prober.state.phase, 'idle');
   assert.equal(s.primary().title, t.testConnection);
@@ -120,7 +120,7 @@ test('self-signed HTTPS needs an explicit trust and saves the fingerprint with t
   s.render();
   await s.submit('192.0.2.10');
   assert.equal(s.prober.state.best, 'https://192.0.2.10:5001');
-  assert.equal(s.page.elements('TextInput').find(e => e.props.accessibilityLabel === t.name)!.props.value, 'Vault');
+  assert.equal(s.page.elements('TextField').find(e => e.props.accessibilityLabel === t.name)!.props.value, 'Vault');
   assert.equal(s.primary().disabled, true);
   const trust = s.page.elements('Row').find(e => e.props.title === t.trustThis);
   assert.ok(trust, 'trust row'); assert.ok(s.page.elements('Row').some(e => e.props.title === t.fingerprint && e.props.subtitle.startsWith('BB:BB')));
@@ -770,7 +770,7 @@ function addRemoteSheet(find: (input: string) => Promise<unknown>) {
   };
   const onAdded = (origin: string) => calls.push(`added:${origin}`);
   const render = () => page.render('AddRemote', { visible: true, remote, onAdded, onClose() {} });
-  const type = async (value: string) => { render(); page.elements('TextInput')[0].props.onChangeText(value); render(); page.elements('PrimaryButton')[0].props.onPress(); await flush(); render(); };
+  const type = async (value: string) => { render(); page.elements('TextField')[0].props.onChangeText(value); render(); page.elements('PrimaryButton')[0].props.onPress(); await flush(); render(); };
   const button = (type: string, title: string) => { const found = page.elements(type).find(e => e.props.title === title); assert.ok(found, title); return found.props; };
   return { page, render, type, button, calls, added, doc, listeners };
 }
@@ -839,7 +839,7 @@ test('add NAS: the browser sheet never invites a QuickConnect ID, which a browse
     './ui': uiStub, './theme': themeStub,
   });
   page.render('AddRemote', { visible: true, remote: { find: async () => ({ kind: 'invalid' }) }, onAdded() {}, onClose() {} });
-  assert.equal(page.elements('TextInput')[0].props.placeholder, t.webAddressPlaceholder);
+  assert.equal(page.elements('TextField')[0].props.placeholder, t.webAddressPlaceholder);
   for (const [name, table] of Object.entries(locales)) {
     assert.ok(table.webAddressPlaceholder, `${name}.webAddressPlaceholder`);
     assert.doesNotMatch(table.webAddressPlaceholder, /QuickConnect/i, name);
@@ -847,5 +847,5 @@ test('add NAS: the browser sheet never invites a QuickConnect ID, which a browse
   }
   const s = addScreen({});
   s.render();
-  assert.equal(s.page.elements('TextInput').find(e => e.props.keyboardType === 'url')?.props.placeholder, t.addressPlaceholder);
+  assert.equal(s.page.elements('TextField').find(e => e.props.keyboardType === 'url')?.props.placeholder, t.addressPlaceholder);
 });

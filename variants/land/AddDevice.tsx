@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, ScrollView, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import type { NasProfile } from '../../src/core/config';
 import { normalizeServer } from '../../src/core/profiles/url';
 import { NasQrError, parseNasQr, qrGroup, type NasQr } from '../../src/core/profiles/qr';
 import { certState, formatFingerprint, hostName, mainCause, needsTrust, type NasProber } from '../../src/core/profiles/probe';
 import { causeText, fill, strings } from '../../src/core/i18n/strings';
-import { Banner, BarContent, Icon, IconButton, PrimaryButton, Row, Separator, TextButton, TopBar, useBarInsets, useBlurTarget } from './ui';
+import { Banner, BarContent, Icon, IconButton, PrimaryButton, Row, Separator, TextButton, TextField, TopBar, useBarInsets, useBlurTarget } from './ui';
 import { CertBadge, certIcon, TrustSheet } from './cert';
 import { colors, layout, radius, spacing, type } from './theme';
 
@@ -137,8 +137,7 @@ export function AddDevice({ prober, profiles, editing, initialLink, startScan, o
     return <View style={{ gap: spacing.lg }}>
       <View style={{ gap: spacing.xs }}>
         <Text style={type.section}>{t.name}</Text>
-        <TextInput accessibilityLabel={t.name} value={name} onChangeText={value => { setName(value); setNameEdited(true); }} placeholder={t.namePlaceholder} placeholderTextColor={colors.tertiary}
-          style={[type.input, { minHeight: 48, paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.grouped }]} returnKeyType="done" />
+        <TextField accessibilityLabel={t.name} value={name} onChangeText={value => { setName(value); setNameEdited(true); }} placeholder={t.namePlaceholder} returnKeyType="done" />
       </View>
       <View style={{ gap: spacing.xs }}>
         <Text style={type.section}>{t.connection}</Text>
@@ -199,13 +198,12 @@ export function AddDevice({ prober, profiles, editing, initialLink, startScan, o
     <CameraView style={{ height: 320, borderRadius: radius.lg, overflow: 'hidden' }} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={({ data }) => read(data)} onMountError={() => { setScanning(false); setError(t.cameraFailed); }} />
   </View> : <View style={{ gap: spacing.lg }}>
     <View style={{ gap: spacing.xs }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, paddingLeft: spacing.md, borderRadius: radius.md, backgroundColor: colors.grouped }}>
-        <Icon name="dns" size={20} color={colors.secondary} />
-        <TextInput accessibilityLabel={t.address} value={input} onChangeText={change} onSubmitEditing={submitAddress} autoFocus={!editing} autoCapitalize="none" autoCorrect={false}
-          keyboardType="url" returnKeyType="go" placeholder={t.addressPlaceholder} placeholderTextColor={colors.tertiary} style={[type.input, { flex: 1, minHeight: 48, paddingHorizontal: spacing.md }]} />
-        {input ? <IconButton icon="cancel" label={t.clearAddress} color={colors.tertiary} onPress={() => change('')} /> : null}
-        {!editing ? <IconButton icon="qr-code-scanner" label={t.scanQr} color={colors.accent} onPress={scan} /> : null}
-      </View>
+      <TextField icon="dns" accessibilityLabel={t.address} value={input} onChangeText={change} onSubmitEditing={submitAddress} autoFocus={!editing} autoCapitalize="none" autoCorrect={false}
+        keyboardType="url" returnKeyType="go" placeholder={t.addressPlaceholder}
+        trailing={input || !editing ? <>
+          {input ? <IconButton icon="cancel" label={t.clearAddress} color={colors.tertiary} onPress={() => change('')} /> : null}
+          {!editing ? <IconButton icon="qr-code-scanner" label={t.scanQr} color={colors.accent} onPress={scan} /> : null}
+        </> : null} />
       {!input && probe.phase === 'idle' ? <Text style={[type.caption, { paddingHorizontal: spacing.xs }]}>{t.addressHint}</Text> : null}
     </View>
     {denied ? <Banner tone="warning" icon="no-photography" title={t.cameraDenied} action={t.cameraSettings} onAction={() => { void Linking.openSettings().catch(() => setError(t.cameraFailed)); }} /> : null}
