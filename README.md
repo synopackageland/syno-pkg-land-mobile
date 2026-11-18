@@ -372,7 +372,16 @@ on desktops drawn without them (Surveillance Station 9) the desktop icons
 (`li.launch-icon[syno-id]`). A tap shows the App's icon with a turning
 arc (no track) and its name at once, until its window shows without DSM's
 loading mask; there is no time limit, and back while it opens cancels it and
-closes the window when it comes. With reduced motion the arc stays still. Every CSS rule is scoped to
+closes the window when it comes. A window still under DSM's loading mask
+comes into view after 1.5 s, under that mask. App windows are Ext windows or Vue
+components; a Vue 3 component has `$` and `$el` instead of `_isVue`, and the
+fit checks for both (`isVue()`). With reduced motion the arc stays still.
+A side region of a border layout that crushes the content on a phone stacks
+with it (`stackSides()`) and folds to a bar with its label, which opens on a
+tap. Panes laid out side by side with flex boxes do the same (`foldPanes()`): a
+row taller than half the screen whose fixed panes leave the growing pane under
+60% of it becomes a column, each fixed pane a bar. A dialog whose content runs
+past its own edge wraps that row and scrolls (`sheets()`). Every CSS rule is scoped to
 `html.spl-fit`, and all but the package page's list to below 600px.
 Edit `dsm-fit.js` or `dsm-fit.css`, then run
 `node scripts/gen-mobile-fit.mjs`; `tests/mobile-fit.test.ts` fails when
