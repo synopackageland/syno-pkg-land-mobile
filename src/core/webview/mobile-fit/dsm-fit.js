@@ -1654,10 +1654,11 @@
     if (!singleOn) return;
     var list = windows(), apps = list.filter(isApp);
     if (embedded) {
-      apps = deskApps(apps);
+      apps = deskApps(dropCancelled(apps));
       list = list.filter(function (c) { return !c.splDesk; });
       if (!apps.length) { seen = false; showDesk(list); return; }
       if (deskList) deskList.hidden = true;
+      openingShown(apps[0]);
     }
     if (hostedId) {
       // The page's first App stays loaded under a hosted App, out of sight
@@ -1724,10 +1725,83 @@
     } catch (e) { /* No icons drawn yet */ }
     return out;
   };
-  var openFromDesk = function (id) {
-    deskLaunched = id;
-    try { SYNO.SDS.AppLaunch(id); } catch (e) { deskLaunched = ''; }
-    schedule();
+  // ---- Opening an App from the list ---------------------------------------
+  // DSM loads an App's scripts before its window exists, seconds in which the
+  // page would not change. Like DSM, a tap shows the App at once: its icon with
+  // a turning arc and its name (dsm-fit.css), until its window shows without
+  // DSM's loading mask. No time limit decides anything; a window still under
+  // its mask after OPEN_MASK_WAIT shows as it is, DSM's mask being the
+  // feedback. Back cancels: the App's window is closed when it comes.
+  var OPEN_MASK_WAIT = 10000, OPEN_FADE = 160;
+  var opening = null, cancelled = {};
+  var showOpening = function (it) {
+    endOpening(true);
+    var el = document.createElement('div');
+    el.className = 'spl-fit-opening';
+    try { if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) el.classList.add('spl-fit-opening-still'); } catch (e) { /* motion stays on */ }
+    el.setAttribute('role', 'progressbar');
+    el.setAttribute('aria-label', it.title || '');
+    var orbit = document.createElement('div');
+    orbit.className = 'spl-fit-opening-orbit';
+    var arc = document.createElement('div');
+    arc.className = 'spl-fit-opening-arc';
+    orbit.appendChild(arc);
+    if (it.icon) { var icon = document.createElement('img'); icon.src = it.icon; icon.alt = ''; orbit.appendChild(icon); }
+    el.appendChild(orbit);
+    var name = document.createElement('div');
+    name.className = 'spl-fit-opening-title';
+    name.textContent = it.title || '';
+    el.appendChild(name);
+    document.body.appendChild(el);
+    opening = { id: it.id, el: el, shownAt: 0 };
+  };
+  /** The App is on screen (or the opening was cancelled): fade the cover out, or drop it at once */
+  var endOpening = function (now) {
+    if (!opening) return;
+    var el = opening.el;
+    opening = null;
+    if (now) { el.remove(); return; }
+    el.classList.add('spl-fit-opening-out');
+    setTimeout(function () { el.remove(); }, OPEN_FADE);
+  };
+  /** The App asked for has its window up: done once DSM's own loading mask is gone */
+  var openingShown = function (app) {
+    if (!opening) return;
+    if (!busy(app)) { endOpening(); return; }
+    if (!opening.shownAt) opening.shownAt = Date.now();
+    else if (Date.now() - opening.shownAt > OPEN_MASK_WAIT) { endOpening(); return; }
+    clearTimeout(busyTimer); busyTimer = setTimeout(schedule, 250);
+  };
+  var cancelOpening = function () {
+    if (!opening) return false;
+    cancelled[opening.id] = 1; deskLaunched = '';
+    endOpening(true);
+    last = ''; schedule();
+    return true;
+  };
+  /** A window of an App whose opening was cancelled: closed as it comes */
+  var dropCancelled = function (apps) {
+    return apps.filter(function (c) {
+      var id = appId(c);
+      if (!cancelled[id] || c.splSeen) return true;
+      delete cancelled[id];
+      try { c.close(); } catch (e) { dom(c).classList.add('spl-fit-under'); }
+      return false;
+    });
+  };
+  var openFromDesk = function (it) {
+    deskLaunched = it.id;
+    delete cancelled[it.id];
+    showOpening(it);
+    last = ''; schedule();
+    // DSM builds the App on this thread: launch once the cover has been painted
+    var go = function () {
+      if (!opening || opening.id !== it.id) return;
+      try { SYNO.SDS.AppLaunch(it.id); } catch (e) { deskLaunched = ''; endOpening(true); }
+      schedule();
+    };
+    if (window.requestAnimationFrame) requestAnimationFrame(function () { requestAnimationFrame(function () { setTimeout(go, 0); }); });
+    else setTimeout(go, 16);
   };
   var drawDesk = function () {
     var items = deskItems(), key = JSON.stringify(items);
@@ -1751,7 +1825,7 @@
       row.className = 'spl-fit-launcher-item'; row.type = 'button'; row.setAttribute('role', 'listitem');
       if (it.icon) { var icon = document.createElement('img'); icon.src = it.icon; icon.alt = ''; row.appendChild(icon); }
       var label = document.createElement('span'); label.textContent = it.title; row.appendChild(label);
-      row.addEventListener('click', function () { openFromDesk(it.id); });
+      row.addEventListener('click', function () { openFromDesk(it); });
       return row;
     });
     deskList.replaceChildren.apply(deskList, rows);
@@ -1777,7 +1851,8 @@
     deskLaunched = '';
     if (!deskFailed) drawDesk();
     if (deskList) deskList.hidden = false;
-    var state = { id: '', title: '', page: '', menu: false, icon: '', back: stack(list).length };
+    // While an App opens, back cancels it (one step)
+    var state = { id: '', title: '', page: '', menu: false, icon: '', back: stack(list).length + (opening ? 1 : 0) };
     var text = JSON.stringify(state);
     if (text !== last) { last = text; post({ internal: 'fitApp', app: state }); }
   };
@@ -1837,6 +1912,7 @@
   };
   /** Back from the shell: close the top step (a dialog, a menu, a page, an App opened from the App) */
   var back = function () {
+    if (cancelOpening()) return;
     var steps = stack(windows());
     if (steps.length) { try { steps[0].close(); } catch (e) { /* the next report says what is left */ } }
     last = ''; schedule();

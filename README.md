@@ -236,7 +236,8 @@ App icon with one arc in the App color turning around it (no track), and the
 App name. With the system "remove animations" setting the arc stays still. It
 appears on the first frame, since a DSM App never paints sooner, and fades out
 over 220 ms when content is ready.
-After 8 s it adds "Still opening" and a quiet Reopen action.
+After 8 s it adds "Still opening" with Reopen and Back; a slow App is never
+judged failed by time alone.
 A failed main-frame navigation offers Reopen and Back, and stale content
 messages cannot dismiss a failed or replaced attempt. No App-specific portal
 paths are used.
@@ -245,11 +246,13 @@ DSM Apps open in one warm DSM page when the mobile fit is on. Once the launcher
 is signed in, a hidden page boots DSM with Personal Settings (every account has
 it), and each DSM App then opens inside it through DSM's own `SYNO.SDS.AppLaunch`,
 so DSM does not boot again for every App. Home or back closes the App's window
-and keeps the page. An App DSM does not list, a launch that does not show a
-window within 8 s, an App that stops on a script error before its window
+and keeps the page. An App DSM does not list, a loaded page that has not offered to
+host the App 8 s after the tap, an App that stops on a script error before its window
 exists (reported about a second later), or a dead page (expired session, DSM
 restarted, a load error) opens the App in a fresh page of its own, with the
-cover. Registered
+cover. An App that has started in the warm page keeps it however long DSM
+takes. On Android the WebView's inset, bridge and fit setup run together
+before the first navigation. Registered
 Apps keep their own entry. The top-left button in a DSM App's bar is Home: it
 always returns to the launcher.
 
@@ -363,7 +366,13 @@ like any other card row. A package page that runs its own copy of DSM's desktop
 Surveillance Station does) becomes a list of the Apps in its main menu: its
 taskbar, desktop icons and main menu with their dark backdrop are hidden, and
 a tapped row opens that App with the page's own `SYNO.SDS.AppLaunch` as a full
-screen single App, back returning to the list. Every CSS rule is scoped to
+screen single App, back returning to the list. The list comes from DSM's
+structure, never from App names: the app view's components (`sds-appview`), or
+on desktops drawn without them (Surveillance Station 9) the desktop icons
+(`li.launch-icon[syno-id]`). A tap shows the App's icon with a turning
+arc (no track) and its name at once, until its window shows without DSM's
+loading mask; there is no time limit, and back while it opens cancels it and
+closes the window when it comes. With reduced motion the arc stays still. Every CSS rule is scoped to
 `html.spl-fit`, and all but the package page's list to below 600px.
 Edit `dsm-fit.js` or `dsm-fit.css`, then run
 `node scripts/gen-mobile-fit.mjs`; `tests/mobile-fit.test.ts` fails when

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cover, keyboardOverlap, type CoverEvent, type CoverPhase } from '../src/core/webview/cover.ts';
+import { HOST_WAIT, cover, hostWait, keyboardOverlap, type CoverEvent, type CoverPhase } from '../src/core/webview/cover.ts';
 const run = (events: CoverEvent[], from: CoverPhase = 'pending') => events.reduce(cover, from);
 test('fast loads never show the cover', () => {
   assert.equal(run(['ready']), 'hidden');
@@ -26,4 +26,10 @@ test('keyboard overlap is the frame part below the keyboard top', () => {
   assert.equal(keyboardOverlap(400, 460), 0);
   assert.equal(keyboardOverlap(740.4, 460.1), 280);
   assert.equal(keyboardOverlap(Number.NaN, 460), 0);
+});
+test('the warm page never gives up an App it has started for being slow', () => {
+  assert.equal(hostWait(true, true, HOST_WAIT * 20), 'wait', 'a launched App keeps its cover');
+  assert.equal(hostWait(false, false, HOST_WAIT * 20), 'wait', 'a page still loading keeps loading');
+  assert.equal(hostWait(false, true, HOST_WAIT - 1), 'wait');
+  assert.equal(hostWait(false, true, HOST_WAIT + 1), 'own-page', 'a loaded page that never offered to host Apps');
 });

@@ -59,13 +59,15 @@ test('reduced motion keeps the arc still and follows later changes', async () =>
   f.render({ phase: 'shown', title: 'Drive' });
   assert.equal(f.arc().spinning, true);
 });
-test('slow state adds a quiet reopen without moving to the failure layout', () => {
+test('slow state keeps turning and adds a quiet reopen and back, without moving to the failure layout', () => {
   const f = fixture();
   f.render({ phase: 'slow', title: 'Drive' });
   assert.ok(f.arc(), 'arc keeps turning while slow');
   const texts = f.page.elements('Text').map(text => text.props.children);
   assert.ok(texts.includes('Still opening'));
-  assert.equal(f.page.elements('Pressable').length, 1);
+  assert.equal(f.page.elements('Pressable').length, 2, 'reopen and back: a slow App is never given up on its own');
+  f.render({ phase: 'slow', title: 'Drive', onBack: undefined });
+  assert.equal(f.page.elements('Pressable').length, 1, 'no back without a place to go');
 });
 test('failure removes the arc and offers reopen and back', () => {
   const f = fixture();

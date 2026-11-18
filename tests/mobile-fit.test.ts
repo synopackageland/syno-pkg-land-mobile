@@ -2806,7 +2806,8 @@ function embeddedDesk({ path = '/webman/3rdparty/Cams/', taskbar = true, width =
       appendChild(c: unknown) { n.children.push(c); return c; },
       setAttribute(k: string, v: string) { n.attrs[k] = v; },
       addEventListener(type: string, fn: () => void) { handlers[type] = fn; },
-      replaceChildren(...c: unknown[]) { n.children = c; }, matches: () => false });
+      replaceChildren(...c: unknown[]) { n.children = c; }, matches: () => false,
+      remove() { const body = d.p.ctx.document.body as any; body.children = body.children.filter((c: unknown) => c !== n); n.removed = true; } });
     n.className = '';
     made.push(n);
     return n;
@@ -2836,7 +2837,8 @@ function embeddedDesk({ path = '/webman/3rdparty/Cams/', taskbar = true, width =
   };
   const list = () => (d.p.ctx.document.body as any).children.find((n: any) => /spl-fit-launcher/.test(n.className));
   const rows = () => list().children.filter((n: any) => n.tagName === 'BUTTON');
-  return { d, bar, made, launched, open, list, rows };
+  const cover = () => (d.p.ctx.document.body as any).children.find((n: any) => n.className === 'spl-fit-opening');
+  return { d, bar, made, launched, open, list, rows, cover };
 }
 
 test('embedded desktop: a package page running DSM\'s desktop becomes a list of its Apps instead of a shrunken desktop', () => {
@@ -2850,10 +2852,26 @@ test('embedded desktop: a package page running DSM\'s desktop becomes a list of 
   assert.equal(e.rows()[0].children.find((n: any) => n.tagName === 'IMG').src, 'https://nas.example.com:5001/webman/3rdparty/Cams/images/SYNO.Cams.Camera.png?v=1');
   // The list reports the package itself: the shell keeps its name, and back leaves
   assert.deepEqual(e.d.apps().at(-1), { id: '', title: '', page: '', menu: false, icon: '', back: 0 });
-  // A row opens the App in this page with DSM's AppLaunch, as one full-screen App
+  // A row opens the App in this page with DSM's AppLaunch, as one full-screen App. The tap shows the App's
+  // icon in a turning arc and its name at once; DSM builds the App after that has been drawn
   e.rows()[1].handlers.click();
+  const cover = e.cover();
+  assert.equal(cover.attrs.role, 'progressbar'); assert.equal(cover.attrs['aria-label'], 'Log');
+  const orbit = cover.children[0];
+  assert.deepEqual(orbit.children.map((n: any) => n.className || n.tagName), ['spl-fit-opening-arc', 'IMG']);
+  assert.equal(orbit.children[1].src, 'https://nas.example.com:5001/webman/3rdparty/Cams/images/SYNO.Cams.Log.png?v=1');
+  assert.equal(cover.children[1].textContent, 'Log');
+  assert.deepEqual(e.launched, [], 'not before the cover has been drawn');
+  e.d.p.advance(20);
   assert.deepEqual(e.launched, ['SYNO.Cams.Log']);
+  // However long DSM takes, the cover stays: no time limit; back would cancel it (one step)
+  e.d.p.advance(60000);
+  assert.equal(e.cover(), cover); assert.equal(e.d.steps, 1);
   const log = e.open('SYNO.Cams.Log', 'Log');
+  // The window is up: the cover fades out, then goes
+  assert.ok(cover.classList.has('spl-fit-opening-out'));
+  e.d.p.advance(200);
+  assert.equal(e.cover(), undefined); assert.equal(cover.removed, true);
   assert.ok(log.classes.has('spl-single-app')); assert.deepEqual(log.size, [393, 800]);
   assert.equal(e.list().hidden, true);
   assert.equal(e.d.apps().at(-1).title, 'Log'); assert.equal(e.d.steps, 1);
@@ -2877,6 +2895,7 @@ test('embedded desktop: a desktop drawn without components (Surveillance Station
   assert.equal(e.rows()[0].children.find((n: any) => n.tagName === 'IMG').src, 'https://nas.example.com:5001/webman/3rdparty/Cams/modules/Camera/images/2x/Camera_256.png?v=1');
   assert.equal(e.rows()[1].children.some((n: any) => n.tagName === 'IMG'), false, 'no image from another origin');
   e.rows()[0].handlers.click();
+  e.d.p.advance(20);
   assert.deepEqual(e.launched, ['SYNO.Cams.Camera']);
 });
 
@@ -2889,6 +2908,41 @@ test('embedded desktop: when its Apps can\'t be read, the desktop shows as it is
   assert.equal(e.list(), undefined);
   e.d.changed(); e.d.p.advance(1000);
   assert.equal(e.d.p.ctx.document.body.classList.has('spl-fit-desk'), false, 'and stays that way');
+});
+
+test('embedded desktop: back while an App opens cancels it, and its window is closed when it comes', () => {
+  const e = embeddedDesk();
+  e.d.changed();
+  e.rows()[0].handlers.click();
+  e.d.p.advance(100);
+  assert.deepEqual(e.launched, ['SYNO.Cams.Camera']);
+  assert.equal(e.d.steps, 1, 'the shell\'s back comes to the page');
+  assert.equal(e.d.back(), true);
+  assert.equal(e.cover(), undefined, 'the cover goes at once');
+  assert.equal(e.list().hidden, false);
+  assert.equal(e.d.steps, 0);
+  // DSM finishes the cancelled App later: its window is closed, the list stays
+  const late = e.open('SYNO.Cams.Camera', 'Cameras');
+  assert.equal(late.closed, 1);
+  assert.equal(e.list().hidden, false);
+  // Opened again, it opens normally
+  e.rows()[0].handlers.click();
+  e.d.p.advance(20);
+  const again = e.open('SYNO.Cams.Camera', 'Cameras');
+  assert.equal(again.closed ?? 0, 0);
+  assert.ok(again.classes.has('spl-single-app'));
+});
+
+test('embedded desktop: the opening cover follows reduced motion and keeps every rule scoped', () => {
+  const e = embeddedDesk();
+  e.d.p.ctx.matchMedia = (q: string) => ({ matches: q === '(prefers-reduced-motion: reduce)' });
+  e.d.changed();
+  e.rows()[0].handlers.click();
+  assert.ok(e.cover().classList.has('spl-fit-opening-still'));
+  const css = readFileSync('src/core/webview/mobile-fit/dsm-fit.css', 'utf8');
+  // The arc colours two edges of a transparent ring: no grey track
+  assert.match(css, /\.spl-fit-opening-arc \{[^}]*border: 3px solid transparent; border-top-color: #1d6fe8; border-right-color: #1d6fe8;/);
+  assert.match(css, /\.spl-fit-opening-still \.spl-fit-opening-arc \{ animation: none; transition: none; \}/);
 });
 
 test('embedded desktop: a desktop helper (a tour window) is out of sight and no App; dialogs over the list close on back', () => {

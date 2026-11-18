@@ -486,7 +486,7 @@ export function Launcher() {
         </View> : null}
         {/* The launch cover shows from the tap until the page's own cover takes over */}
         {shell && createdShown !== shell.request ? <LaunchCover phase={openingSlow ? 'slow' : 'shown'} title={shell.target.name} icon={<AppIcon app={shell.target} profile={profile.id} size={72} />} tint={tileOf(shell.target.package || shell.target.name).fg}
-          labels={{ loading: t.loadingApp, slow: t.openingSlow, reopen: t.retry, back: t.back }} onFaded={() => {}}
+          labels={{ loading: t.loadingApp, slow: t.openingSlow, reopen: t.retry, back: t.back }} onFaded={() => {}} onBack={backToLauncher}
           onReopen={() => { Native.logOpen('open_retry', shell.request); requested.current = ++sequence.current; Native.logOpen('open_requested', requested.current); setShellEpoch(value => value + 1); setShell({ ...shell, request: requested.current }); }} /> : null}
       </View>
     </Animated.View> : null}

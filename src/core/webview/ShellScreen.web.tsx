@@ -20,7 +20,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
 import { BackHandler, useBackDepth } from '../back.web';
 import { launchUrl, sameOrigin } from '../profiles/url';
-import { COVER_DELAY, COVER_SLOW, FIT_WAIT, HOST_WAIT, cover, type CoverEvent, type CoverPhase } from './cover';
+import { COVER_DELAY, COVER_SLOW, FIT_WAIT, cover, hostWait, type CoverEvent, type CoverPhase } from './cover';
 import { LaunchCover } from './LaunchCover';
 import { fitApp, hostedApp, mobileFitOn, mobileFitScript } from './mobile-fit';
 import { initialFrameState, noticedDocument } from './frame-state';
@@ -150,7 +150,7 @@ export function ShellScreen({ profile, target, active = true, preload, host, onH
     return () => clearTimeout(timer);
   }, [started, attempt, fit, profile.origin]);
 
-  // Not ready in time: a fresh page shows as it is; the warm page hands the App to a page of its own
+  // Not ready in time: a fresh page shows as it is; a warm page that cannot host Apps hands the App to a page of its own
   useEffect(() => {
     if (!active || !started) return;
     const timer = setInterval(() => {
@@ -159,7 +159,8 @@ export function ShellScreen({ profile, target, active = true, preload, host, onH
         if (s.ready || !request) return;
         // The App's window is up but DSM still shows its loading mask: shown as it is after the wait
         if (s.launched === request && s.reported) { if (now - s.launchedAt > FIT_WAIT) ready(); return; }
-        if (s.launched === request ? now - s.launchedAt > HOST_WAIT : s.loaded && now - s.launchedAt > HOST_WAIT) fail(request);
+        // A slow App keeps the cover (slow, with Back); a page that never offered to host Apps hands it over
+        if (hostWait(s.launched === request, s.loaded, now - s.launchedAt) === 'own-page') fail(request);
         return;
       }
       if (s.ready || !s.loaded) return;

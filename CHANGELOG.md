@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Opening an App inside a package page that runs its own DSM desktop (Surveillance Station's Monitor Center, Recording, IP Camera, Log and so on) responds at once, as on DSM's desktop: the App's icon with a turning arc and its name show on the tap, and fade into the App when its window is ready. Back while it opens cancels it. The arc has no grey track and stays still with reduced motion.
+- A DSM App that is slow to open in the warm page keeps opening there instead of being restarted in a page of its own after 8 s, which booted DSM again. "Still opening" now offers Back as well as Reopen, in the Android App and the browser page.
+- The Android App prepares a new App view's bridge, fit and insets together, so its page starts loading sooner after the tap.
 - Adding a NAS whose certificate this phone can't verify (self-signed, or issued for a domain while the NAS is added by IP) opens the certificate for review as soon as the address is found: the address, who it is issued to and by, the expiry date and the SHA-256 fingerprint, with Allow and Cancel. Allow saves the NAS with that exact certificate and goes on to sign in; Cancel keeps the result, and the trust row opens the review again.
 - An expired certificate is named as such with how to renew it, instead of being saved and failing later; when the NAS also answers over plain HTTP, that address is chosen instead.
 - The browser page tells a certificate it refused from a NAS that does not answer: a quick refusal reads "This browser may not trust the certificate of …", explains that a page can't accept it, and offers to open that exact HTTPS address in a new tab before Retry. A NAS that does not answer gets a network hint instead.

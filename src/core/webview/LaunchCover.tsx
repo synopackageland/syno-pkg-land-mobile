@@ -64,7 +64,7 @@ export function Arc({ tint, size, spinning }: { tint: string; size: number; spin
   return <Animated.View pointerEvents="none" style={[styles.arc, { width: size, height: size, borderRadius: size / 2, borderTopColor: tint, borderRightColor: tint, transform: [{ rotate }] }]} />;
 }
 
-/** Centered launch state over a WebView that keeps loading underneath */
+/** Centered launch state over a WebView that keeps loading underneath. Slow or failed: Reopen and Back, never a deadline */
 export function LaunchCover({ phase, title, icon, tint = accent, message, labels, onReopen, onBack, onFaded }: LaunchCoverProps) {
   const failed = Boolean(message);
   const visible = failed || phase === 'shown' || phase === 'slow';
@@ -95,7 +95,7 @@ export function LaunchCover({ phase, title, icon, tint = accent, message, labels
           {failed || phase === 'slow' ? <Pressable onPress={onReopen} accessibilityRole="button" style={failed ? [styles.primary, { backgroundColor: tint }] : styles.quiet}>
             <Text style={failed ? styles.primaryText : [styles.quietText, { color: tint }]}>{labels.reopen}</Text>
           </Pressable> : null}
-          {failed && onBack ? <Pressable onPress={onBack} accessibilityRole="button" style={styles.quiet}><Text style={[styles.quietText, { color: tint }]}>{labels.back}</Text></Pressable> : null}
+          {(failed || phase === 'slow') && onBack ? <Pressable onPress={onBack} accessibilityRole="button" style={styles.quiet}><Text style={[styles.quietText, { color: tint }]}>{labels.back}</Text></Pressable> : null}
         </View>
       </View>
     </View>

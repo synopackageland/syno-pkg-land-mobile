@@ -3,7 +3,7 @@
  * sooner and a delay only adds a white page; a quiet slow hint, never a deadline
  */
 export const COVER_DELAY = 0, COVER_SLOW = 8000, COVER_FADE = 220;
-/** How long a loaded warm page may take to show the App it was asked for */
+/** How long a loaded warm page that never offered to host Apps (a sign-in page, an older DSM) is given */
 export const HOST_WAIT = 8000;
 /** A fresh single-App page shows its App within this time after loading, or is shown as it is */
 export const FIT_WAIT = 10000;
@@ -30,4 +30,15 @@ export function cover(phase: CoverPhase, event: CoverEvent): CoverPhase {
 export function keyboardOverlap(frameBottom: number, keyboardTop: number | null): number {
   if (keyboardTop === null || !Number.isFinite(keyboardTop) || !Number.isFinite(frameBottom)) return 0;
   return Math.max(0, Math.round(frameBottom - keyboardTop));
+}
+
+/**
+ * The warm page and the App asked of it. An App the page has started is never given up for being
+ * slow: the cover stays, turns slow (with Back) and waits for the page. Only the page's own
+ * signals (fitLaunch false, a load or HTTP error) open it in a page of its own. A page that has
+ * loaded but has not offered to host Apps after HOST_WAIT will not host it (a sign-in page, an
+ * older DSM): the App opens on its own page.
+ */
+export function hostWait(launched: boolean, pageLoaded: boolean, waited: number): 'wait' | 'own-page' {
+  return !launched && pageLoaded && waited > HOST_WAIT ? 'own-page' : 'wait';
 }
