@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { component } from './component.ts';
-import { NasProber, certState, hostName, mainCause, type ProbeResponse } from '../src/core/profiles/probe.ts';
+import { NasProber, certState, formatFingerprint, needsTrust, hostName, mainCause, type ProbeResponse } from '../src/core/profiles/probe.ts';
 import { parseNasQr, qrGroup, NasQrError } from '../src/core/profiles/qr.ts';
 import { normalizeServer } from '../src/core/profiles/url.ts';
 import { causeText, fill, locales } from '../src/core/i18n/strings.ts';
@@ -24,7 +24,7 @@ const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 // UI primitives are rendered as named elements so tests read their props directly
 const ui = Object.fromEntries(['Banner', 'Icon', 'IconButton', 'PrimaryButton', 'Row', 'Separator', 'TextButton', 'TopBar', 'Chevron', 'ConfirmSheet', 'Section', 'Sheet', 'EmptyState', 'Skeleton', 'TabBar', 'BarContent'].map(name => [name, name]));
 const uiStub = { ...ui, useBlurTarget: () => ({ current: null }), useBarInsets: () => ({ top: 44, bottom: 52, rawBottom: 0 }), useCollapsingBar: () => ({ hidden: false, onScroll() {} }) };
-const certStub = { CertBadge: 'CertBadge', certIcon: () => 'lock', certColor: () => '#000', savedCert: (origin: string, sha256?: string) => origin.startsWith('http:') ? 'http' : sha256 ? 'pinned' : 'trusted' };
+const certStub = { CertBadge: 'CertBadge', TrustSheet: 'TrustSheet', certIcon: () => 'lock', certColor: () => '#000', savedCert: (origin: string, sha256?: string) => origin.startsWith('http:') ? 'http' : sha256 ? 'pinned' : 'trusted' };
 const i18n = { strings: () => t, fill, causeText };
 
 function prober(answers: Record<string, ProbeResponse | Promise<ProbeResponse>>) {
@@ -41,7 +41,7 @@ function addScreen(answers: Record<string, ProbeResponse | Promise<ProbeResponse
     'expo-camera': { CameraView: 'CameraView', useCameraPermissions: () => [{ granted: camera.granted }, async () => { requests++; return { granted: camera.request }; }] },
     'react-native': { ...Object.fromEntries(['View', 'Text', 'Pressable', 'ScrollView', 'TextInput', 'ActivityIndicator', 'KeyboardAvoidingView'].map(n => [n, n])), Linking: { openSettings: async () => {} } },
     '../../src/core/profiles/url': { normalizeServer }, '../../src/core/profiles/qr': { parseNasQr, qrGroup, NasQrError },
-    '../../src/core/profiles/probe': { certState, hostName, mainCause }, '../../src/core/i18n/strings': i18n,
+    '../../src/core/profiles/probe': { certState, hostName, mainCause, needsTrust, formatFingerprint }, '../../src/core/i18n/strings': i18n,
     './ui': uiStub, './cert': certStub, './theme': themeStub,
   });
   const render = () => page.render('AddDevice', { prober: p.instance, profiles: [], onSave: (value: unknown) => { saved.push(value); }, onQr: async (value: unknown) => { qrs.push(value); }, onShowExisting() {}, onClose() {}, ...props });
@@ -75,7 +75,41 @@ test('typing never probes; Test connection starts a cancellable probe that ignor
   assert.equal(s.primary(), undefined);
 });
 
-test('self-signed HTTPS needs an explicit trust tap and saves the fingerprint with the DSM name', async () => {
+test('self-signed HTTPS opens the certificate for review; Allow saves the fingerprint with the DSM name', async () => {
+  const s = addScreen({});
+  s.prober['probe'] = async (url: string) => {
+    if (url.startsWith('https://192.0.2.10:5001/webapi/')) return { status: 200, body: dsm, tls: selfSigned };
+    if (url === 'https://192.0.2.10:5001/') return { status: 200, body: '<title>Vault - Synology NAS</title>', tls: selfSigned };
+    return { error: 'refused' };
+  };
+  s.render();
+  await s.submit('192.0.2.10'); s.render();
+  const sheet = () => s.page.elements('TrustSheet')[0]?.props;
+  assert.equal(sheet()?.visible, true, 'the review opens without a tap');
+  assert.equal(sheet().origin, 'https://192.0.2.10:5001');
+  assert.equal(sheet().state, 'untrusted');
+  assert.equal(sheet().tls.sha256, selfSigned.sha256);
+  // Cancel keeps the result; the trust row opens the same review again
+  sheet().onClose(); s.render();
+  assert.equal(sheet().visible, false);
+  assert.equal(s.primary().disabled, true);
+  s.page.elements('Row').find(e => e.props.title === t.trustThis)!.props.onPress(); s.render();
+  assert.equal(sheet().visible, true);
+  sheet().onAllow(); await flush(); s.render();
+  assert.deepEqual(plain(s.saved), [{ name: 'Vault', origin: 'https://192.0.2.10:5001', sha256: 'b'.repeat(64) }]);
+});
+
+test('an expired certificate blocks HTTPS with its own explanation', async () => {
+  const s = addScreen({});
+  s.prober['probe'] = async (url: string) => url.startsWith('https://192.0.2.12:5001/webapi/') ? { status: 200, body: dsm, tls: { ...selfSigned, expired: true } } : { error: 'refused' };
+  s.render();
+  await s.submit('https://192.0.2.12:5001'); s.render();
+  assert.ok(s.page.elements('Banner').some(e => e.props.title === t.cert_expired && e.props.detail === t.cert_expiredDetail));
+  assert.equal(s.primary().disabled, true);
+  assert.equal(s.page.elements('TrustSheet').length, 0);
+});
+
+test('self-signed HTTPS needs an explicit trust and saves the fingerprint with the DSM name', async () => {
   const s = addScreen({});
   const answers: Record<string, ProbeResponse> = {};
   s.prober['probe'] = async (url: string) => {
@@ -91,8 +125,10 @@ test('self-signed HTTPS needs an explicit trust tap and saves the fingerprint wi
   const trust = s.page.elements('Row').find(e => e.props.title === t.trustThis);
   assert.ok(trust, 'trust row'); assert.ok(s.page.elements('Row').some(e => e.props.title === t.fingerprint && e.props.subtitle.startsWith('BB:BB')));
   trust.props.onPress(); s.render();
-  assert.equal(s.primary().disabled, false);
-  await s.primary().onPress();
+  s.page.elements('TrustSheet')[0].props.onClose(); s.render();
+  assert.equal(s.primary().disabled, true, 'closing the review without Allow does not trust');
+  trust.props.onPress(); s.render();
+  s.page.elements('TrustSheet')[0].props.onAllow(); await flush(); s.render();
   assert.deepEqual(plain(s.saved), [{ name: 'Vault', origin: 'https://192.0.2.10:5001', sha256: 'b'.repeat(64) }]);
 });
 
@@ -754,11 +790,11 @@ test('add NAS (browser): nothing answered, so Open DSM lets the user accept the 
   let answer: unknown = { kind: 'unreachable', origin: 'https://10.0.0.9:5001' };
   const s = addRemoteSheet(async () => answer);
   await s.type('10.0.0.9:5001');
-  assert.equal(s.page.elements('Banner')[0].props.detail, t.unreachableDetail);
+  assert.equal(s.page.elements('Banner')[0].props.detail, t.webTimeoutDetail);
   // Returning to the page before Open DSM does not check again
   s.listeners.get('visibilitychange')!(); await flush();
   assert.equal(s.calls.filter(c => c.startsWith('find:')).length, 1);
-  s.button('PrimaryButton', t.openDsm).onPress();
+  s.button('PrimaryButton', fill(t.openInTab, { origin: 'https://10.0.0.9:5001' })).onPress();
   assert.equal(s.calls.at(-1), 'open:https://10.0.0.9:5001');
   // Hidden while the DSM tab is open: no check yet
   s.doc.visibilityState = 'hidden'; s.listeners.get('visibilitychange')!(); await flush();
@@ -776,9 +812,20 @@ test('add NAS (browser): nothing answered, so Open DSM lets the user accept the 
   assert.deepEqual(s.added, [{ origin: 'https://10.0.0.9:5001', launcher: 'https://10.0.0.9:5001/m/index.html', name: '10.0.0.9:5001', dsm: true, unanswered: true }]);
 });
 
+test('add NAS (browser): a certificate the browser refused is named as such, with the address to open and accept', async () => {
+  const s = addRemoteSheet(async () => ({ kind: 'unreachable', origin: 'https://10.0.0.9:5001', certificate: true }));
+  await s.type('10.0.0.9');
+  const banner = s.page.elements('Banner')[0].props;
+  assert.equal(banner.title, fill(t.webCertTitle, { host: '10.0.0.9:5001' }));
+  assert.equal(banner.detail, t.webCertDetail);
+  s.button('PrimaryButton', fill(t.openInTab, { origin: 'https://10.0.0.9:5001' })).onPress();
+  assert.equal(s.calls.at(-1), 'open:https://10.0.0.9:5001');
+  s.button('TextButton', t.retry);
+});
+
 test('add NAS (browser): the copy never makes Connect a requirement', () => {
   for (const [name, table] of Object.entries(locales)) {
-    for (const key of ['webAddressHint', 'noLauncherTitle', 'noLauncherDetail', 'unreachableDetail', 'webMixedDetail', 'webQcDetail'] as const) {
+    for (const key of ['webAddressHint', 'noLauncherTitle', 'noLauncherDetail', 'webCertDetail', 'webTimeoutDetail', 'webMixedDetail', 'webQcDetail'] as const) {
       assert.doesNotMatch(table[key], /Connect|遠端網域|远程域名/, `${name}.${key}`);
     }
   }

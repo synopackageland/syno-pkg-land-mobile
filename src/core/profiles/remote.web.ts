@@ -1,4 +1,4 @@
-import { addLink, decodeFragment, encodeFragment, launcherOn, launcherPages, mergeLinks, readLinks, removeLink, setReach, withLauncher, withoutFragment, withSelf, type NasLink } from './nas-links';
+import { addLink, quickFailure, decodeFragment, encodeFragment, launcherOn, launcherPages, mergeLinks, readLinks, removeLink, setReach, withLauncher, withoutFragment, withSelf, type NasLink } from './nas-links';
 import { AddressError, candidateOrigins, parseAddress } from './probe';
 import { fixedProfile } from '../platform';
 import { parseQuickConnect } from './quickconnect';
@@ -8,6 +8,8 @@ const KEY = 'spl:nas-links';
 /** The query a launcher answers inside a probe frame (see public/index.html) */
 const PROBE = 'spl-probe=1';
 const PROBE_MS = 10_000, PING_MS = 8_000, RECHECK_MS = 30_000;
+/** A launcher answers as soon as its page runs; once every frame has loaded, this long is enough */
+const LOADED_MS = 2_000;
 
 const read = (): NasLink[] => { try { return readLinks(JSON.parse(window.localStorage.getItem(KEY) || '[]'), Date.now()); } catch { return []; } };
 const write = (links: NasLink[]) => { try { window.localStorage.setItem(KEY, JSON.stringify(links)); } catch { /* Private mode or full: the list lives for this page only */ } };
@@ -54,14 +56,20 @@ export function startRemote(): void {
   save(links);
 }
 
-/** True when something answered at that page: an opaque reply is enough, its content is never read */
-async function answers(url: string): Promise<boolean> {
+/**
+ * Whether something answered at that page: an opaque reply is enough, its content is never read.
+ * refused: the browser gave up quickly instead of waiting, which for HTTPS usually means it
+ * rejected the certificate (a page is never told why)
+ */
+async function ping(url: string): Promise<{ ok: boolean; refused: boolean }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PING_MS);
-  try { await fetch(url, { mode: 'no-cors', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', signal: controller.signal }); return true; }
-  catch { return false; }
+  const started = Date.now();
+  try { await fetch(url, { mode: 'no-cors', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', signal: controller.signal }); return { ok: true, refused: false }; }
+  catch { return { ok: false, refused: !controller.signal.aborted && quickFailure(Date.now() - started) }; }
   finally { clearTimeout(timer); }
 }
+const answers = async (url: string) => (await ping(url)).ok;
 /**
  * Whether a listed NAS answers. A DSM-only one is also asked for a launcher, so a NAS that gained
  * one since it was added opens the launcher's full pages from then on.
@@ -93,7 +101,7 @@ function probeLaunchers(pages: string[], signal: AbortSignal): Promise<{ origin:
       if (hit && (event.data as Record<string, unknown> | null)?.['spl-launcher'] === 1) finish({ origin: hit.origin, launcher: hit.launcher });
     };
     const onAbort = () => finish();
-    const timer = setTimeout(() => finish(), PROBE_MS);
+    let timer = setTimeout(() => finish(), PROBE_MS), loaded = 0;
     window.addEventListener('message', onMessage);
     signal.addEventListener('abort', onAbort);
     for (const launcher of pages) {
@@ -102,6 +110,8 @@ function probeLaunchers(pages: string[], signal: AbortSignal): Promise<{ origin:
       frame.referrerPolicy = 'no-referrer';
       frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
       frame.style.cssText = 'position:absolute;width:1px;height:1px;left:-10px;top:-10px;border:0;visibility:hidden';
+      // A page that loaded without answering is not a launcher: stop soon after the last one loads
+      frame.addEventListener('load', () => { if (++loaded === pages.length && !done) { clearTimeout(timer); timer = setTimeout(() => finish(), LOADED_MS); } }, { once: true });
       frame.src = `${launcher}?${PROBE}`;
       frames.push({ frame, origin: new URL(launcher).origin, launcher });
       document.body.appendChild(frame);
@@ -148,13 +158,24 @@ export const remoteNas: RemoteNas = {
     } catch (e) { return { kind: 'invalid', code: e instanceof AddressError ? e.code : 'invalid' }; }
     const pages = launcherPages(origins, launcherPath || location.pathname, location.protocol);
     if (!pages.length) return { kind: 'invalid', code: 'scheme' };
-    const found = await probeLaunchers(pages, signal);
+    // Each address is also pinged at once: when none answers at all, no launcher can, so the
+    // frames stop instead of waiting out their timeout
+    const frames = new AbortController();
+    const stop = () => frames.abort();
+    signal.addEventListener('abort', stop);
+    const pinged = Promise.all(pages.map(page => ping(new URL('/', page).href)));
+    void pinged.then(results => { if (!results.some(r => r.ok)) stop(); });
+    const found = await probeLaunchers(pages, frames.signal);
+    signal.removeEventListener('abort', stop);
     if (found) return { kind: 'found', ...found };
     if (signal.aborted) return { kind: 'unreachable' };
     // No launcher answered: tell a DSM without Connect from an address that does not answer at all
-    const reached = await Promise.all(pages.map(page => answers(new URL('/', page).href)));
-    const index = reached.indexOf(true);
-    return index >= 0 ? { kind: 'noLauncher', origin: new URL(pages[index]).origin } : { kind: 'unreachable', origin: new URL(pages[0]).origin };
+    const reached = await pinged;
+    const index = reached.findIndex(r => r.ok);
+    if (index >= 0) return { kind: 'noLauncher', origin: new URL(pages[index]).origin };
+    // Name the HTTPS address the browser turned away at once: that is where a certificate needs accepting
+    const refused = reached.findIndex((r, i) => r.refused && pages[i].startsWith('https:'));
+    return { kind: 'unreachable', origin: new URL(pages[Math.max(refused, 0)]).origin, certificate: refused >= 0 };
   },
   add(link) {
     const launcher = launcherOn(link.origin, link.launcher);

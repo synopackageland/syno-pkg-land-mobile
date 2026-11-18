@@ -278,7 +278,7 @@ function el(extra: Record<string, unknown> = {}) {
   const classes = new Set<string>();
   return {
     nodeType: 1, offsetWidth: 393, style: {} as Record<string, string>, children: [] as unknown[], textContent: '',
-    classList: { contains: (c: string) => classes.has(c), add: (c: string) => { classes.add(c); }, has: (c: string) => classes.has(c) },
+    classList: { contains: (c: string) => classes.has(c), add: (c: string) => { classes.add(c); }, remove: (c: string) => { classes.delete(c); }, has: (c: string) => classes.has(c) },
     querySelector: (_selector: string): unknown => null,
     ...extra,
   };
@@ -1502,7 +1502,8 @@ test('the fit stylesheet uses only DSM\'s shared component classes, never an App
 });
 
 test('the fit script names no App\'s own classes either', () => {
-  assert.ok(!/['".]\.?(syno-(?!ux-)|synopkg|iscsi)/.test(readFileSync('src/core/webview/mobile-fit/dsm-fit.js', 'utf8')));
+  // syno-id is the attribute DSM's own desktop puts on every App icon, not an App's class
+  assert.ok(!/['".]\.?(syno-(?!ux-|id['\]])|synopkg|iscsi)/.test(readFileSync('src/core/webview/mobile-fit/dsm-fit.js', 'utf8')));
 });
 
 /** Ext 3's box layouts as the fit sees them: a row of four 69 px cards with 10 px spacers between, 154 px high */
@@ -2786,7 +2787,7 @@ test('card rows: cards an App fills in after the row is laid out (counts a reque
  * desktop and taskbar of DSM's own framework, an app view of the package's Apps, and an older
  * window manager (a `list` of windows by id, the App's id in its instance's jsConfig).
  */
-function embeddedDesk({ path = '/webman/3rdparty/Cams/', taskbar = true, width = 393 } = {}) {
+function embeddedDesk({ path = '/webman/3rdparty/Cams/', taskbar = true, width = 393, appview = true, icons = [] as { id: string; title: string; image: string }[] } = {}) {
   const d = dsmPage({ app: 'SYNO.Cams.Desk', width });
   d.p.ctx.location.search = ''; d.p.ctx.location.pathname = path;
   d.p.ctx.location.href = `https://nas.example.com:5001${path}`;
@@ -2795,7 +2796,7 @@ function embeddedDesk({ path = '/webman/3rdparty/Cams/', taskbar = true, width =
   // DSM's app view: its items are components, drawn only when it first opens (an App, then the same App in its search results)
   const item = (jsID: string, title: string) => ({ jsID, title, icon: `images/${jsID}.png?v=1`, rendered: false });
   const items = [{ id: 'panel' }, item('SYNO.Cams.Camera', 'Cameras'), item('SYNO.Cams.Log', 'Log'), item('SYNO.Cams.Unknown', 'Gone'), item('SYNO.Cams.Camera', 'Cameras')];
-  cmps['sds-appview'] = { cascade(fn: (c: unknown) => void) { [cmps['sds-appview'], ...items].forEach(fn); } };
+  if (appview) cmps['sds-appview'] = { cascade(fn: (c: unknown) => void) { [cmps['sds-appview'], ...items].forEach(fn); } };
   const ids: Record<string, unknown> = { 'sds-desktop': d.desk, 'sds-taskbar': taskbar ? bar : null };
   d.p.ctx.document.getElementById = (id: string) => ids[id] ?? null;
   // Nodes the fit makes: the list and its rows
@@ -2811,6 +2812,10 @@ function embeddedDesk({ path = '/webman/3rdparty/Cams/', taskbar = true, width =
     return n;
   };
   d.p.ctx.document.body = el({ appendChild(c: unknown) { (d.p.ctx.document.body as any).children.push(c); return c; } });
+  // Newer desktops: icons without components, each carrying its App's id, title and image
+  (d.p.ctx.document as any).querySelectorAll = (selector: string) => selector === 'li.launch-icon[syno-id]' ? icons.map(i => ({
+    getAttribute: (k: string) => k === 'syno-id' ? i.id : k === 'aria-label' ? i.title : null, textContent: i.title,
+    querySelector: (q: string) => q === '.image' ? { style: { backgroundImage: `url("${i.image}")` } } : null })) : [];
   const launched: string[] = [];
   d.sds.AppLaunch = (id: string) => { launched.push(id); };
   d.sds.WindowMgr = { list: {} as Record<string, unknown> };
@@ -2858,6 +2863,32 @@ test('embedded desktop: a package page running DSM\'s desktop becomes a list of 
   assert.equal(e.d.closed(), 0);
   assert.equal(e.list().hidden, false);
   assert.equal(e.d.steps, 0); assert.equal(e.d.back(), false);
+});
+
+test('embedded desktop: a desktop drawn without components (Surveillance Station 9) lists its icons\' Apps', () => {
+  const e = embeddedDesk({ appview: false, icons: [
+    { id: 'SYNO.Cams.Camera', title: 'Cameras', image: 'modules/Camera/images/2x/Camera_256.png?v=1' },
+    { id: 'SYNO.Cams.Unknown', title: 'Gone', image: '' },
+    { id: 'SYNO.Cams.Log', title: 'Log', image: 'https://elsewhere.example.com/log.png' },
+  ] });
+  e.d.changed();
+  assert.ok(e.d.p.ctx.document.body.classList.has('spl-fit-desk'));
+  assert.deepEqual(e.rows().map((r: any) => r.children.find((n: any) => n.tagName === 'SPAN').textContent), ['Cameras', 'Log']);
+  assert.equal(e.rows()[0].children.find((n: any) => n.tagName === 'IMG').src, 'https://nas.example.com:5001/webman/3rdparty/Cams/modules/Camera/images/2x/Camera_256.png?v=1');
+  assert.equal(e.rows()[1].children.some((n: any) => n.tagName === 'IMG'), false, 'no image from another origin');
+  e.rows()[0].handlers.click();
+  assert.deepEqual(e.launched, ['SYNO.Cams.Camera']);
+});
+
+test('embedded desktop: when its Apps can\'t be read, the desktop shows as it is instead of an empty backdrop', () => {
+  const e = embeddedDesk({ appview: false });
+  e.d.changed();
+  assert.ok(e.d.p.ctx.document.body.classList.has('spl-fit-desk'), 'still looking');
+  e.d.p.advance(25_000); e.d.changed();
+  assert.equal(e.d.p.ctx.document.body.classList.has('spl-fit-desk'), false);
+  assert.equal(e.list(), undefined);
+  e.d.changed(); e.d.p.advance(1000);
+  assert.equal(e.d.p.ctx.document.body.classList.has('spl-fit-desk'), false, 'and stays that way');
 });
 
 test('embedded desktop: a desktop helper (a tour window) is out of sight and no App; dialogs over the list close on back', () => {

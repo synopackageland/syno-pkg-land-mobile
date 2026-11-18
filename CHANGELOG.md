@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Adding a NAS whose certificate this phone can't verify (self-signed, or issued for a domain while the NAS is added by IP) opens the certificate for review as soon as the address is found: the address, who it is issued to and by, the expiry date and the SHA-256 fingerprint, with Allow and Cancel. Allow saves the NAS with that exact certificate and goes on to sign in; Cancel keeps the result, and the trust row opens the review again.
+- An expired certificate is named as such with how to renew it, instead of being saved and failing later; when the NAS also answers over plain HTTP, that address is chosen instead.
+- The browser page tells a certificate it refused from a NAS that does not answer: a quick refusal reads "This browser may not trust the certificate of …", explains that a page can't accept it, and offers to open that exact HTTPS address in a new tab before Retry. A NAS that does not answer gets a network hint instead.
+- Surveillance Station 9, whose desktop is drawn without DSM's own App list, opens as its list of Apps too, read from the desktop icons; when a desktop's Apps can't be read at all, it shows as it is instead of an empty dark backdrop.
+- The browser page's Add NAS answers in about a second when nothing answers at the address, and within a few seconds for a NAS without a phone launcher, instead of always waiting ten seconds.
+
 - Pull down on Home, Apps or Notifications to refresh in the browser page too, as in the Android App: a pull from the very top of the list shows a round indicator that follows the finger, and a release past the threshold reloads that tab while its current data stays on screen. Scrolling, sideways swipes and the browser's own pull-to-reload are left alone, and a pull never opens the App under the finger. Android keeps its platform indicator, now in the accent colour through the same shared control, which any list can use.
 - Notifications show the offline line with Retry when a refresh fails over saved notices, and the cause with Retry when nothing is saved yet, instead of "No notifications".
 

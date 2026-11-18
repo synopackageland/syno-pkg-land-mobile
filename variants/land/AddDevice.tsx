@@ -4,10 +4,10 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import type { NasProfile } from '../../src/core/config';
 import { normalizeServer } from '../../src/core/profiles/url';
 import { NasQrError, parseNasQr, qrGroup, type NasQr } from '../../src/core/profiles/qr';
-import { certState, hostName, mainCause, type CertState, type NasProber } from '../../src/core/profiles/probe';
+import { certState, formatFingerprint, hostName, mainCause, needsTrust, type NasProber } from '../../src/core/profiles/probe';
 import { causeText, fill, strings } from '../../src/core/i18n/strings';
 import { Banner, BarContent, Icon, IconButton, PrimaryButton, Row, Separator, TextButton, TopBar, useBarInsets, useBlurTarget } from './ui';
-import { CertBadge, certIcon } from './cert';
+import { CertBadge, certIcon, TrustSheet } from './cert';
 import { colors, layout, radius, spacing, type } from './theme';
 
 /** quickconnect: the ID the origin came from; each later connection looks it up again */
@@ -24,7 +24,6 @@ type Props = {
   onShowExisting(id: string): void;
   onClose(): void;
 };
-const needsTrust = (state: CertState) => state === 'untrusted' || state === 'mismatch' || state === 'changed';
 
 export function AddDevice({ prober, profiles, editing, initialLink, startScan, onSave, onQr, onShowExisting, onClose }: Props) {
   const t = strings();
@@ -33,6 +32,7 @@ export function AddDevice({ prober, profiles, editing, initialLink, startScan, o
   const [input, setInput] = useState(editing ? editing.origin : '');
   const [name, setName] = useState(editing?.name ?? ''), [nameEdited, setNameEdited] = useState(Boolean(editing));
   const [trust, setTrust] = useState(false), [choosing, setChoosing] = useState(false), [anyway, setAnyway] = useState(false), [details, setDetails] = useState(false);
+  const [reviewing, setReviewing] = useState(false), [reviewed, setReviewed] = useState('');
   const [slow, setSlow] = useState(false), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [scanning, setScanning] = useState(false), [denied, setDenied] = useState(false), [qr, setQr] = useState<NasQr>();
   const [permission, requestPermission] = useCameraPermissions();
@@ -50,7 +50,12 @@ export function AddDevice({ prober, profiles, editing, initialLink, startScan, o
     if (nameEdited || !probe.host) return;
     if (probe.best || probe.nameLoaded || probe.phase === 'done') setName(probe.name || hostName(probe.host));
   }, [probe.best, probe.name, probe.nameLoaded, probe.phase, probe.host, nameEdited]);
-  useEffect(() => { setTrust(false); setChoosing(false); }, [probe.best]);
+  useEffect(() => { setTrust(false); setChoosing(false); setReviewing(false); }, [probe.best]);
+  // A leaf the phone can't verify is shown for review once the choice settles, instead of only a checkbox
+  const reviewKey = best?.tls && cert && needsTrust(cert) ? `${best.origin} ${best.tls.sha256}` : '';
+  useEffect(() => {
+    if (reviewKey && probe.settled && !anyway && !qr && reviewed !== reviewKey) { setReviewed(reviewKey); setReviewing(true); }
+  }, [reviewKey, probe.settled, anyway, qr, reviewed]);
   useEffect(() => { setDetails(false); }, [probe.input]);
   useEffect(() => {
     setSlow(false);
@@ -86,9 +91,11 @@ export function AddDevice({ prober, profiles, editing, initialLink, startScan, o
   // A QuickConnect address has no direct fallback: the directory decides where the NAS is
   if (!probe.quickconnect?.explicit) try { fallback = normalizeServer(input).origin; } catch { /* Shown as an address error */ }
   const target = anyway ? fallback : best?.origin;
-  const blocked = !target || !name.trim() || Boolean(duplicate) || (!anyway && cert !== undefined && needsTrust(cert) && !trust);
-  const save = async () => {
-    if (blocked || saving || !target) return;
+  const blockedBy = (trusted: boolean) => !target || !name.trim() || Boolean(duplicate) || (!anyway && cert !== undefined && (cert === 'expired' || needsTrust(cert) && !trusted));
+  const blocked = blockedBy(trust);
+  /** trusted: the user just allowed the certificate in the review sheet */
+  const save = async (trusted = trust) => {
+    if (blockedBy(trusted) || saving || !target) return;
     setSaving(true); setError('');
     try {
       const sha256 = !anyway && best?.tls && target.startsWith('https:') && cert && (needsTrust(cert) || pin === best.tls.sha256) ? best.tls.sha256 : undefined;
@@ -142,15 +149,18 @@ export function AddDevice({ prober, profiles, editing, initialLink, startScan, o
           {choosing ? answered.filter(c => c.origin !== best.origin).map(c => <View key={c.origin}><Separator inset={layout.gutter} />
             <Row icon="radio-button-unchecked" iconColor={colors.tertiary} title={c.origin} subtitle={<CertBadge state={certState(c.origin, c.tls)} />} label={c.origin} onPress={() => { prober.choose(c.origin); }} />
           </View>) : null}
-          {best.tls && cert !== 'http' && cert !== 'trusted' || pin ? <><Separator inset={layout.gutter} /><Row title={t.fingerprint} subtitle={(best.tls?.sha256 ?? '').replace(/(..)(?=.)/g, '$1:').toUpperCase()} mono /></> : null}
+          {best.tls && cert !== 'http' && cert !== 'trusted' || pin ? <><Separator inset={layout.gutter} /><Row title={t.fingerprint} subtitle={formatFingerprint(best.tls?.sha256 ?? '')} mono /></> : null}
           {needsTrust(cert) ? <><Separator inset={layout.gutter} />
             <Row icon={trust ? 'check-box' : 'check-box-outline-blank'} iconColor={trust ? colors.accent : colors.secondary} title={cert === 'changed' ? t.trustNew : t.trustThis} subtitle={t.trustHelp}
-              label={t.trustThis} selected={trust} onPress={() => setTrust(!trust)} />
+              label={t.trustThis} selected={trust} onPress={() => trust ? setTrust(false) : setReviewing(true)} />
           </> : null}
         </View>
         {probe.phase === 'probing' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingTop: spacing.xs }}><ActivityIndicator size="small" color={colors.tertiary} /><Text style={type.caption}>{t.checkingHttps}</Text></View> : null}
       </View>
       {cert === 'changed' ? <Banner tone="danger" title={t.cert_changed} detail={t.cert_changedDetail} /> : null}
+      {cert === 'expired' ? <Banner tone="danger" icon="gpp-bad" title={t.cert_expired} detail={t.cert_expiredDetail} /> : null}
+      {best.tls && needsTrust(cert) ? <TrustSheet visible={reviewing} origin={best.origin} state={cert} tls={best.tls}
+        onClose={() => setReviewing(false)} onAllow={() => { setReviewing(false); setTrust(true); void save(true); }} /> : null}
       {cert === 'http' ? <Banner tone="warning" icon="no-encryption" title={t.cert_http} detail={t.cert_httpDetail} /> : null}
       {duplicate ? <Banner tone="info" title={fill(t.alreadyAdded, { name: duplicate.name })} action={t.openSaved} onAction={() => onShowExisting(duplicate.id)} /> : null}
     </View>;
@@ -204,7 +214,7 @@ export function AddDevice({ prober, profiles, editing, initialLink, startScan, o
 
   const primary = qr ? <PrimaryButton title={updating ? t.update : t.addQr} busy={saving} onPress={async () => { if (saving) return; setSaving(true); try { await onQr(qr); } catch { if (mounted.current) { setError(t.failed); setSaving(false); } } }} />
     : scanning ? null
-    : (best || anyway) ? <PrimaryButton title={editing ? t.saveAndSignIn : t.add} disabled={blocked} busy={saving} onPress={save} />
+    : (best || anyway) ? <PrimaryButton title={editing ? t.saveAndSignIn : t.add} disabled={blocked} busy={saving} onPress={() => void save()} />
     : input.trim() && !tested && !probe.error ? <PrimaryButton title={t.testConnection} icon="network-check" onPress={submitAddress} /> : null;
   // Edge-to-edge Android does not resize for the keyboard; keep the primary button above it
   return <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: colors.background }}>
