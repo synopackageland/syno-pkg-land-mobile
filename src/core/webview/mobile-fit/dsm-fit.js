@@ -2711,7 +2711,7 @@
   var repairs = [];
   var keep = function (el, cls) { repairs.push({ el: el, cls: cls }); };
   // The variable a repair's class reads its size from
-  var REPAIR_VAR = { 'spl-fit-cap': ['--spl-fit-cap'], 'spl-fit-pad': ['--spl-fit-pad'], 'spl-fit-grow': ['--spl-fit-min'], 'spl-fit-rows-row': ['--spl-fit-row', '--spl-fit-zoom'] };
+  var REPAIR_VAR = { 'spl-fit-cap': ['--spl-fit-cap'], 'spl-fit-pad': ['--spl-fit-pad'], 'spl-fit-meter': ['--spl-fit-h'], 'spl-fit-grow': ['--spl-fit-min'], 'spl-fit-rows-row': ['--spl-fit-row', '--spl-fit-zoom'] };
   var drop = function (r) { r.el.classList.remove(r.cls); (REPAIR_VAR[r.cls] || []).forEach(function (v) { r.el.style.removeProperty(v); }); };
   var undoRepairs = function () {
     repairs.forEach(drop);
@@ -3306,6 +3306,52 @@
       e.classList.add('spl-fit-nolabel'); keep(e, 'spl-fit-nolabel');
     });
   };
+  // i. Meter rows: a row of a name, a meter (a thin bar and its fill) and its value, with
+  //    the meter and value placed at a fixed spot beside the name, in a box that scrolls
+  //    sideways (a volume's usage: a 434 px row in a 325 px card, its "1.5 TB" cut off).
+  //    Rule: a box that scrolls a row wider than itself sideways, when the row holds a
+  //    meter inside a block placed absolutely beside text in the flow, and that block
+  //    alone fits the box. The block joins the flow under the name, keeping its own size,
+  //    the row and the name take the box's width, and the box, and the boxes around it
+  //    set to its old height, grow to the row's height instead of scrolling. Kept until the width changes.
+  var METER_H = 16, METER_W = 48;
+  var meterBar = function (e) {
+    if (e.matches('progress, [role=progressbar]')) return true;
+    var h = e.offsetHeight, w = e.offsetWidth;
+    if (h < 2 || h > METER_H || w < METER_W || e.children.length !== 1 || String(e.textContent || '').trim()) return false;
+    var f = e.children[0];
+    return !f.children.length && Math.abs(f.offsetHeight - h) <= 2 && f.offsetWidth <= w;
+  };
+  var meterRows = function (root) {
+    var all = root.querySelectorAll('div');
+    for (var i = 0; i < all.length && i < CAP; i++) {
+      var box = all[i];
+      if (box.classList.contains('spl-fit-meter-box') || !box.offsetWidth || box.scrollWidth <= box.clientWidth + 2 || getComputedStyle(box).overflowX === 'visible' || box.closest('svg, .spl-fit-scaled, .spl-fit-wide')) continue;
+      flowKids(box).forEach(function (row) {
+        if (row.offsetWidth <= box.clientWidth + 2) return;
+        var bar = Array.prototype.filter.call(row.querySelectorAll('*'), meterBar)[0];
+        if (!bar) return;
+        var block = null;
+        for (var a = bar; a && a !== row; a = a.parentElement) if (/absolute/.test(getComputedStyle(a).position)) block = a;
+        if (!block || block.offsetWidth > box.clientWidth || !/\d/.test(block.textContent || '')) return;
+        var name = String(row.textContent || '').replace(block.textContent || '', '');
+        if (!name.trim()) return;
+        // The boxes around it, and the name beside it (sized to what the block left), take the row's width
+        var wide = flowKids(block.parentElement);
+        block.style.setProperty('--spl-fit-h', block.offsetHeight + 'px');
+        block.classList.add('spl-fit-meter'); keep(block, 'spl-fit-meter');
+        for (var b = block.parentElement; b && b !== row; b = b.parentElement) wide.push(b);
+        wide.forEach(function (w) { w.classList.add('spl-fit-meter-in'); keep(w, 'spl-fit-meter-in'); });
+        row.classList.add('spl-fit-meter-row'); keep(row, 'spl-fit-meter-row');
+        box.classList.add('spl-fit-meter-box'); keep(box, 'spl-fit-meter-box');
+        box.scrollLeft = 0;
+        // Boxes around it set to the old height grow with it, up to one that holds it or scrolls
+        for (var up = box.parentElement; up && up !== document.body && getComputedStyle(up).overflowY === 'visible' && up.scrollHeight > up.clientHeight + 1; up = up.parentElement) {
+          up.classList.add('spl-fit-meter-up'); keep(up, 'spl-fit-meter-up');
+        }
+      });
+    }
+  };
   var step = function (f) { try { f(); } catch (e) { /* presentation only */ } };
   var repairWidth = 0;
   var repair = function (root) {
@@ -3324,6 +3370,7 @@
     step(function () { stacked = floatCards(root); });
     // Rows are measured in the cards' final width: after they stacked
     if (!stacked) step(function () { fixedRows(root); });
+    step(function () { meterRows(root); });
     // Cards that stacked: their content is measured again at the new width
     if (stacked) contentSoon(false);
     // DSM's own scrollbars (fleXcroll) measured the content before: measure again

@@ -391,7 +391,8 @@ its desktop height takes its content's height with a top padding like its other 
 overflow scrolls once its content runs past its bottom (`clippedPages()`). A Vue toolbar's
 buttons take what they need and its search and filter fields share the rest. DSM Vue's
 label/value cards drop an "undefined:" label (a column with no title) and a label whose
-value is empty. Every CSS rule is scoped to
+value is empty. A row of a name, a meter and its value that scrolled sideways puts the meter
+and value under the name, and its box grows instead (`meterRows()`). Every CSS rule is scoped to
 `html.spl-fit`, and all but the package page's list to below 600px.
 Edit `dsm-fit.js` or `dsm-fit.css`, then run
 `node scripts/gen-mobile-fit.mjs`; `tests/mobile-fit.test.ts` fails when

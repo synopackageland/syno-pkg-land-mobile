@@ -1496,6 +1496,7 @@ test('the fit stylesheet uses only DSM\'s shared component classes, never an App
     'module-list-layout', 'layout-module-list-panel', // DSM's Vue page-list window
     'body', 'cancel-icon', // DSM's Vue tour and dialog boxes
     'mcontentwrapper', 'contentwrapper', // DSM's own scroller (fleXcroll), in every Ext grid
+    'ps__rail-x', 'ps__rail-y', // DSM Vue's v-ps scroller (perfect-scrollbar)
     'spl-fit', // the class the script puts on <html>
   ]);
   const other = [...used].filter(c => !shared.test(c) && !parts.has(c));
@@ -2575,6 +2576,48 @@ test('clipped pages: a page-sized box that hides its content running past its bo
   contentPage([strip.box]);
   assert.ok(!strip.box.cls.has('spl-fit-page-scroll'));
   assert.match(fitCss(), /\.spl-fit-page-scroll \{ overflow-y: auto !important;/);
+});
+
+test('meter rows: a name, a meter and its value in a row that scrolls sideways go under the name, and the box grows instead', () => {
+  // A volume's usage: a 434 px row (name, then the meter and "240.7 GB | 1.5 TB free" drawn at a fixed spot) in a 325 px scroller
+  const make = (opts: { meter?: boolean; blockWidth?: number } = {}) => {
+    const meter = opts.meter ?? true, blockWidth = opts.blockWidth ?? 200;
+    const fill = node('div', { box: { left: 258, top: 231, width: 27, height: 8 } });
+    const track = node('div', { box: { left: 258, top: 231, width: blockWidth, height: 8 }, cs: { position: 'absolute' } }, meter ? [fill] : []);
+    const block = node('div', { box: { left: 258, top: 223, width: blockWidth, height: 48 }, cs: { position: 'absolute' } }, [
+      node('div', { box: { left: 258, top: 223, width: blockWidth, height: 0 } }, [track, node('div', { box: { left: 258, top: 247, width: blockWidth, height: 24 }, cs: { position: 'absolute' }, text: '240.7 GB | 1.5 TB free' })]),
+    ]);
+    const name = node('div', { box: { left: 108, top: 223, width: 150, height: 48 }, cs: { display: 'flex', flexDirection: 'column' } }, [node('div', { box: { left: 108, top: 223, width: 150, height: 24 }, text: 'Volume 1' })]);
+    const table = node('div', { box: { left: 40, top: 211, width: 434, height: 72 } }, [name, block]);
+    const row = node('div', { box: { left: 40, top: 211, width: 434, height: 72 }, cs: { position: 'relative' } }, [table]);
+    const box = node('div', { cls: 'v-ps ps ps--active-x', box: { left: 40, top: 211, width: 325, height: 84 }, cs: { position: 'relative', overflowX: 'hidden', overflowY: 'hidden' } }, [row]);
+    box.naturalWidth = 446; box.scrollLeft = 30;
+    const card = node('div', { box: { left: 21, top: 211, width: 348, height: 84 } }, [box]);
+    card.naturalHeight = 136;
+    return { card, box, row, table, name, block };
+  };
+  const m = make();
+  contentPage([m.card]);
+  assert.ok(m.block.cls.has('spl-fit-meter'));
+  assert.equal(m.block.vars['--spl-fit-h'], '48px', 'it keeps its own height');
+  assert.ok(m.table.cls.has('spl-fit-meter-in') && m.name.cls.has('spl-fit-meter-in'), 'the name sized to what the block left takes the width');
+  assert.ok(!m.block.cls.has('spl-fit-meter-in'), 'the block keeps its own width');
+  assert.ok(m.row.cls.has('spl-fit-meter-row'));
+  assert.ok(m.box.cls.has('spl-fit-meter-box'));
+  assert.equal(m.box.scrollLeft, 0);
+  assert.ok(m.card.cls.has('spl-fit-meter-up'), 'a box set to the old height grows');
+  // A wide row with no meter (a table that scrolls on purpose), or a meter block wider than the box: left alone
+  const plain = make({ meter: false });
+  contentPage([plain.card]);
+  assert.ok(!plain.box.cls.has('spl-fit-meter-box') && !plain.block.cls.has('spl-fit-meter'));
+  const wide = make({ blockWidth: 340 });
+  contentPage([wide.card]);
+  assert.ok(!wide.block.cls.has('spl-fit-meter'));
+  const css = fitCss();
+  assert.match(css, /\.spl-fit-meter \{ position: relative !important; left: auto !important; top: auto !important;[^}]*height: var\(--spl-fit-h\) !important;/);
+  assert.match(css, /\.spl-fit-meter-row \{ display: block !important; float: none !important; width: auto !important; min-width: 0 !important;/);
+  assert.match(css, /\.spl-fit-meter-box,\s*html\.spl-fit:not\(#spl-fit-id\) \.spl-fit-meter-up \{ height: auto !important; \}/);
+  assert.match(css, /\.spl-fit-meter-box > \.ps__rail-x,\s*html\.spl-fit:not\(#spl-fit-id\) \.spl-fit-meter-box > \.ps__rail-y \{ display: none !important; \}/);
 });
 
 test('label/value cards: a column with no title loses its "undefined:" label, and a label with an empty value goes', () => {

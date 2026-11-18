@@ -247,6 +247,14 @@ html.spl-fit:not(#spl-fit-id) .spl-fit-wrap { flex-wrap: wrap !important; row-ga
 html.spl-fit:not(#spl-fit-id) .spl-fit-wrap-fill > * { flex: 1 1 100% !important; width: auto !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
 html.spl-fit:not(#spl-fit-id) .spl-fit-pad { padding-top: var(--spl-fit-pad, 12px) !important; }
 html.spl-fit:not(#spl-fit-id) .spl-fit-gap { margin-bottom: 12px !important; }
+/* A meter and its value beside a name, in a row that scrolled sideways: under the name */
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-row { display: block !important; float: none !important; width: auto !important; min-width: 0 !important; max-width: 100% !important; height: auto !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-in { width: auto !important; min-width: 0 !important; height: auto !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter { position: relative !important; left: auto !important; top: auto !important; right: auto !important; bottom: auto !important; height: var(--spl-fit-h) !important; max-width: 100% !important; margin-top: 4px !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-box,
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-up { height: auto !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-box > .ps__rail-x,
+html.spl-fit:not(#spl-fit-id) .spl-fit-meter-box > .ps__rail-y { display: none !important; }
 /* A page box that hid its content running past its bottom (dsm-fit.js clippedPages()) scrolls */
 html.spl-fit:not(#spl-fit-id) .spl-fit-page-scroll { overflow-y: auto !important; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; scrollbar-width: none; }
 /* (A scroll bar that takes room would narrow the page under the charts the App sized to it) */
