@@ -1695,7 +1695,7 @@
     report(apps[0], stack(list).length);
   };
   // The embedded desktop's list of Apps (see embeddedDesk)
-  var deskList = null, deskIds = [], deskKey = '', deskTries = 0, deskLaunched = '';
+  var deskList = null, deskIds = [], deskKey = '', deskTries = 0, deskLaunched = '', deskFailed = false;
   /**
    * The app view's Apps, each once, in its order. DSM builds the app view's items as components
    * and draws them only when the app view first opens: read the components (each holds its App's id,
@@ -1703,15 +1703,25 @@
    */
   var deskItems = function () {
     var out = [], seen = {}, map = (SYNO.SDS.Config && SYNO.SDS.Config.FnMap) || {}, view = Ext.getCmp && Ext.getCmp('sds-appview');
-    if (!view || !view.cascade) return out;
-    view.cascade(function (c) {
-      var id = c && c.jsID;
+    var add = function (id, title, src) {
       if (!id || typeof id !== 'string' || seen[id] || !map[id]) return;
       seen[id] = 1;
       var icon = '';
-      try { icon = c.icon ? new URL(String(c.icon), location.href).href : ''; } catch (e) { icon = ''; }
-      out.push({ id: id, title: plain(c.title || c.plaintitle || id), icon: icon && new URL(icon).origin === location.origin ? icon : '' });
-    });
+      try { icon = src ? new URL(String(src), location.href).href : ''; } catch (e) { icon = ''; }
+      out.push({ id: id, title: plain(title || id), icon: icon && new URL(icon).origin === location.origin ? icon : '' });
+    };
+    if (view && view.cascade) view.cascade(function (c) { if (c) add(c.jsID, c.title || c.plaintitle, c.icon); });
+    if (out.length) return out;
+    // Newer desktops (Surveillance Station 9) draw the app view and desktop icons without
+    // components: each icon carries its App's id, title and icon image
+    try {
+      Array.prototype.forEach.call(document.querySelectorAll('li.launch-icon[syno-id]'), function (li) {
+        var image = li.querySelector && li.querySelector('.image');
+        var bg = image && image.style && image.style.backgroundImage || '';
+        var src = /url\(["']?([^"')]+)["']?\)/.exec(bg);
+        add(li.getAttribute('syno-id'), li.getAttribute('aria-label') || li.textContent, src ? src[1] : '');
+      });
+    } catch (e) { /* No icons drawn yet */ }
     return out;
   };
   var openFromDesk = function (id) {
@@ -1722,8 +1732,10 @@
   var drawDesk = function () {
     var items = deskItems(), key = JSON.stringify(items);
     if (!items.length) {
-      // The app view fills in after the desktop starts: look again shortly, for a while
+      // The app view fills in after the desktop starts: look again shortly, for a while. A desktop
+      // whose Apps can't be read shows as it is, instead of an empty backdrop
       if (deskTries++ < 40) setTimeout(schedule, 500);
+      else { deskFailed = true; if (document.body) document.body.classList.remove('spl-fit-desk'); }
       return;
     }
     if (key === deskKey && deskList) return;
@@ -1761,9 +1773,9 @@
   };
   var showDesk = function (list) {
     var body = document.body;
-    if (body && !body.classList.contains('spl-fit-desk')) body.classList.add('spl-fit-desk');
+    if (!deskFailed && body && !body.classList.contains('spl-fit-desk')) body.classList.add('spl-fit-desk');
     deskLaunched = '';
-    drawDesk();
+    if (!deskFailed) drawDesk();
     if (deskList) deskList.hidden = false;
     var state = { id: '', title: '', page: '', menu: false, icon: '', back: stack(list).length };
     var text = JSON.stringify(state);
