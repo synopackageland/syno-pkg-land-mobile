@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Opening an App inside a package page that runs its own DSM desktop (Surveillance Station's Monitor Center, Recording, IP Camera, Log and so on) responds at once, as on DSM's desktop: the App's icon with a turning arc and its name show on the tap, and fade into the App when its window is ready. Back while it opens cancels it. The arc has no grey track and stays still with reduced motion.
+- A DSM App that is slow to open in the warm page keeps opening there instead of being restarted in a page of its own after 8 s, which booted DSM again. "Still opening" now offers Back as well as Reopen, in the Android App and the browser page.
+- The Android App prepares a new App view's bridge, fit and insets together, so its page starts loading sooner after the tap.
+- Apps whose window is a Vue 3 component (Surveillance Station 9's Event Center) open full screen like any other App. Before, the window opened behind the list, so the tap seemed to do nothing.
+- A window that shows while DSM's loading mask is still on it comes into view after 1.5 s, under DSM's own mask, instead of the opening cover waiting for the mask to go.
+- A side panel stacked with the content on a phone (the "Filter by" lists of IP Camera, Recording and Log) folds to a bar with its own label at the edge of the content, which keeps the screen. A tap opens it, and another tap folds it again.
+- Panes drawn side by side with flex boxes, where fixed panes leave the main one too little room (Monitor Center's layout tree and alert list, Event Center's Search & Filter), stack into a column: the main pane takes the height and each fixed pane folds to a bar that opens on a tap. Before, Monitor Center's live view was pushed off the screen.
+- A dialog whose content runs past its own edge, such as Event Center's welcome page with its picture beside the text, wraps that row and scrolls, so its text shows.
+- Monitor Center opens straight into its phone layout: its panes fold under the opening cover and as the page draws them, so the side-by-side desktop layout no longer shows for a moment first.
+- In a dialog that flows on a phone, a small control pinned near its bottom (Event Center's welcome pager) moves below the text instead of covering its last line.
+- List summaries laid out as a table (Surveillance Station's Recording list) put each cell on its own line on a phone, and words break only when longer than the line. Before, a time or an event type broke letter by letter in a cell squeezed beside the camera name.
 - Adding a NAS whose certificate this phone can't verify (self-signed, or issued for a domain while the NAS is added by IP) opens the certificate for review as soon as the address is found: the address, who it is issued to and by, the expiry date and the SHA-256 fingerprint, with Allow and Cancel. Allow saves the NAS with that exact certificate and goes on to sign in; Cancel keeps the result, and the trust row opens the review again.
 - An expired certificate is named as such with how to renew it, instead of being saved and failing later; when the NAS also answers over plain HTTP, that address is chosen instead.
 - The browser page tells a certificate it refused from a NAS that does not answer: a quick refusal reads "This browser may not trust the certificate of …", explains that a page can't accept it, and offers to open that exact HTTPS address in a new tab before Retry. A NAS that does not answer gets a network hint instead.

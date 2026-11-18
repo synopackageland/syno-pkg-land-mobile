@@ -16,10 +16,10 @@ import { storageResetScript } from '../src/core/session/storage-reset.ts';
 import { fitApp, fitCallScript, fitLaunchScript, hostedApp, mobileFitOn, warmUrl } from '../src/core/webview/mobile-fit/index.ts';
 const origin = 'https://nas.example.com';
 const props = { config: { name: 'Shell', version: '0.1.0' }, profile: { id: 'one', name: 'NAS', origin }, target: { id: 'app', registered: true, preset: 'mobile', url: origin + '/entry', capabilities: [] } };
-function fixture(extra = {}, moves: boolean[] = []) {
+function fixture(extra = {}, moves: boolean[] = [], overrides: Record<string, unknown> = {}) {
   const listeners = new Map<string, (event: any) => void>(), scripts: string[] = [], fits: string[] = [], bindings: unknown[][] = [], backs: number[] = [];
   const view = { injectJavaScript: (script: string) => scripts.push(script), clearHistory() {} };
-  const native = { addListener: (name: string, fn: (event: any) => void) => { listeners.set(name, fn); return { remove() {} }; }, zeroWebViewInsets: async () => 1, bindBridge: async (...args: unknown[]) => { bindings.push(args); return true; }, unbindBridge: async () => {}, sessionKey: () => 'user-a', storageReset: () => 'nonce-1', bindFit: async (_id: number, fitOrigin: string) => { fits.push(fitOrigin); return true; }, goBackIfPossible: async (id: number) => { backs.push(id); return moves.shift() ?? false; } };
+  const native = { addListener: (name: string, fn: (event: any) => void) => { listeners.set(name, fn); return { remove() {} }; }, zeroWebViewInsets: async () => 1, bindBridge: async (...args: unknown[]) => { bindings.push(args); return true; }, unbindBridge: async () => {}, sessionKey: () => 'user-a', storageReset: () => 'nonce-1', bindFit: async (_id: number, fitOrigin: string) => { fits.push(fitOrigin); return true; }, goBackIfPossible: async (id: number) => { backs.push(id); return moves.shift() ?? false; }, ...overrides };
   const page = component('src/core/webview/ShellScreen.tsx', {
     'react-native-webview': { WebView: 'WebView' }, '../../../modules/webview-cookies': { default: native },
     '../bridge/host': { BridgeHost }, '../bridge/contract': { MAX_BASE64 }, '../bridge/injection': { bridgeScript, eventScript },
@@ -237,4 +237,35 @@ test('an SDK App\'s back goes through the WebView\'s history (its sub-pages) bef
   await press(); assert.equal(exits, 0);
   await press(); assert.equal(exits, 1);
   assert.deepEqual(f.backs, [42, 42, 42]);
+});
+test('a new App view sets up its insets, bridge and fit in one round trip before its entry starts', async () => {
+  const calls: string[] = [];
+  let insetsDone!: () => void;
+  const desktop = { ...props.target, registered: false, preset: 'desktop', url: origin + '/?launchApp=SYNO.SDS.X' };
+  const f = fixture({ target: desktop, profile: { ...props.profile, mobileFit: true } }, [], {
+    zeroWebViewInsets: () => { calls.push('insets'); return new Promise<void>(resolve => { insetsDone = resolve; }); },
+    bindBridge: async () => { calls.push('bridge'); return true; },
+    bindFit: async () => { calls.push('fit'); return true; },
+  });
+  f.web().onLoadEnd({ nativeEvent: { url: 'about:blank', target: 42 } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ['insets', 'bridge', 'fit'], 'all three asked at once, none waits for another');
+  f.render(); assert.equal(f.web().source.uri, 'about:blank', 'the entry waits for all three');
+  insetsDone(); await new Promise(resolve => setImmediate(resolve)); f.render();
+  assert.equal(f.web().source.uri, desktop.url);
+});
+test('the warm page keeps a slow App it has started under the cover, which turns slow and offers back (hostWait decides the rest)', async () => {
+  const failed: number[] = [];
+  const warm = { ...props.target, id: 'dsm-warm', registered: false, preset: 'desktop', url: origin + '/?launchApp=SYNO.SDS.App.PersonalSettings.Instance' };
+  const base = { target: warm, preload: true, onHostFailed: (request: number) => failed.push(request), onExit: () => {} };
+  const f = fixture({ ...base, active: false }); await f.bind();
+  const send = (data: object) => f.web().onMessage({ nativeEvent: { url: origin + '/', data: JSON.stringify({ origin, ...data }) } });
+  send({ internal: 'fitReady' });
+  const show = () => f.page.render('ShellScreen', { ...props, ...base, active: true, host: { app: 'SYNO.SS.Slow', request: 7 } });
+  show(); await new Promise(resolve => setImmediate(resolve)); show();
+  assert.ok(f.scripts.some(script => script.includes('__splFitLaunch')));
+  for (let i = 0; i < 4; i++) { f.page.timers(); show(); }
+  assert.deepEqual(failed, []);
+  assert.equal(f.cover().phase, 'slow');
+  assert.ok(f.cover().onBack, 'back is offered while it waits');
 });

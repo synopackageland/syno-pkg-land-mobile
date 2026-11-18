@@ -12,7 +12,7 @@ import { intakeInbox } from '../intake/inbox';
 import { launchUrl, sameOrigin } from '../profiles/url';
 import { download } from '../transfers/download';
 import { EntryRecovery, contentProbe } from './recovery';
-import { COVER_DELAY, COVER_SLOW, FIT_WAIT, HOST_WAIT, cover, keyboardOverlap, type CoverEvent, type CoverPhase } from './cover';
+import { COVER_DELAY, COVER_SLOW, FIT_WAIT, cover, hostWait, keyboardOverlap, type CoverEvent, type CoverPhase } from './cover';
 import { LaunchCover } from './LaunchCover';
 import { desktopPreset, mobilePreset, navigation } from './policy';
 import { fitApp, fitCallScript, fitLaunchScript, hostedApp, mobileFitOn, mobileFitScript, type FitApp } from './mobile-fit';
@@ -266,8 +266,8 @@ export function ShellScreen({ config, profile, target, active = true, launch, on
       if (fitSeen.current) return;
       // The App's window is up but its loading mask stays: shown as it is after the wait
       if (fitBusy.current) { if (Date.now() - hosting.current.at > FIT_WAIT) { fitSeen.current = true; step('ready'); hideSplash(); } return; }
-      // Too slow, or a page that cannot host Apps (a sign-in page, an older DSM): the App opens on its own
-      if (Date.now() - hosting.current.at > HOST_WAIT && (hosting.current.launched === hostRequest || pageReady.current)) failHost(hostRequest);
+      // A page that cannot host Apps (a sign-in page, an older DSM): the App opens on its own. A slow App keeps waiting
+      if (hostWait(hosting.current.launched === hostRequest, pageReady.current, Date.now() - hosting.current.at) === 'own-page') failHost(hostRequest);
     }, 250);
     return () => clearInterval(timer);
   }, [hostRequest]);
@@ -289,13 +289,17 @@ export function ShellScreen({ config, profile, target, active = true, launch, on
     bound.current = true; viewId.current = id;
     const initializing = recovery.current.attempt;
     try {
-      await Native.zeroWebViewInsets();
-      if (initializing !== recovery.current.attempt) return;
-      const ok = await Native.bindBridge(id, profile.origin, enabled ? bridgeScript(profile.origin, description) : '', target.capabilities.includes('camera'), onAuthenticated ? signInScript(profile.origin) : '', storageResetScript(profile.origin, Native.storageReset(profile.origin)));
+      // The three native setups are independent: one round trip instead of three before the entry starts.
+      // Fit desktop DSM Apps to the phone (presentation only); a per-NAS setting, on by default on phones
+      const fitting = target.preset === 'desktop' && mobileFitOn(profile, shortSide());
+      const [, ok, fitted] = await Promise.all([
+        Native.zeroWebViewInsets(),
+        Native.bindBridge(id, profile.origin, enabled ? bridgeScript(profile.origin, description) : '', target.capabilities.includes('camera'), onAuthenticated ? signInScript(profile.origin) : '', storageResetScript(profile.origin, Native.storageReset(profile.origin))),
+        fitting ? Native.bindFit(id, profile.origin, mobileFitScript(profile.origin)).catch(() => false) : Promise.resolve(false),
+      ]);
       if (initializing !== recovery.current.attempt) { void Native.unbindBridge(id).catch(() => {}); return; }
       if (!ok && (enabled || onAuthenticated)) { setError(t.webviewUpdate); hideSplash(); return; }
-      // Fit desktop DSM Apps to the phone (presentation only); a per-NAS setting, on by default on phones
-      if (target.preset === 'desktop' && mobileFitOn(profile, shortSide())) fitBound.current = await Native.bindFit(id, profile.origin, mobileFitScript(profile.origin)).catch(() => false);
+      fitBound.current = fitted;
       if (!sameOrigin(target.url, profile.origin)) throw new Error('Invalid target');
       setUri(enabled ? launchUrl(target.url, launch) : target.url);
     } catch { if (initializing === recovery.current.attempt) { setError(t.webviewFailed); hideSplash(); } }

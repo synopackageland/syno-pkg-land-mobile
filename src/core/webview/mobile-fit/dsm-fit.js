@@ -19,6 +19,9 @@
   var NARROW = 600;
   var css = __SPL_FIT_CSS__;
   var narrow = function () { return Math.min(screen.width, window.innerWidth) < NARROW; };
+  // A DSM Vue window: DSM's own (Vue 2, `_isVue`) or a package's newer framework (Vue 3, such as
+  // Surveillance Station 9: a component proxy with its internal instance `$` and its element `$el`)
+  var isVue = function (c) { return !!c && (c._isVue === true || (!!c.$ && !!c.$el && typeof c.$el === 'object')); };
   var viewport = 'width=device-width,initial-scale=1';
 
   var fixViewport = function () {
@@ -153,7 +156,8 @@
   // Center 1070, Storage Manager 1200), so it is never wider than an App that
   // declares its size. WIDE_CAP bounds a declared size.
   var SQUEEZE_MIN = 2, SQUEEZE_SHARE = 0.15, SLACK = 0.1, STEP = 20, WIDE_FALLBACK = 800, WIDE_CAP = 1280, LEAF_CAP = 4000;
-  var LEAF_SKIP = '.x-grid3, [role=grid], .x-toolbar, .v-toolbar, .x-tab-strip-wrap, .spl-fit-nav-side, .x-menu, .spl-fit-hscroll';
+  // (A pane folded to its bar: its texts are hidden on purpose, foldPanes())
+  var LEAF_SKIP = '.x-grid3, [role=grid], .x-toolbar, .v-toolbar, .x-tab-strip-wrap, .spl-fit-nav-side, .x-menu, .spl-fit-hscroll, .spl-fit-pane:not(.spl-fit-pane-open)';
   /**
    * A text is cut off when its own box hides what overflows (an ellipsis),
    * when it reaches past the side of a box around it that hides overflow, or
@@ -323,7 +327,7 @@
    */
   var num = function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
   var keepWideVue = function (c) {
-    if (widening || !c || !c._isVue || !c.$el || !c.$el.classList.contains('spl-single-app')) return;
+    if (widening || !c || !isVue(c) || !c.$el || !c.$el.classList.contains('spl-single-app')) return;
     var box = c.$el, scroller = box.parentElement;
     if (!scroller || !box.offsetWidth) return;
     widening = true;
@@ -345,7 +349,7 @@
   /** A menu or a dialog over a widened Vue App opens at the screen's left edge: scroll back there */
   var wideHome = function () {
     windows().forEach(function (w) {
-      var el = w._isVue && w.$el && w.$el.parentElement;
+      var el = isVue(w) && w.$el && w.$el.parentElement;
       if (el && el.scrollLeft && el.classList.contains('spl-fit-wide')) el.scrollLeft = 0;
     });
   };
@@ -988,6 +992,33 @@
     }
     return false;
   };
+  var SIDE_BAR = 40;
+  /** The region's own label: its title, the value of its first field (a filter pick) or its first text */
+  var sideLabel = function (p) {
+    if (p.title) return String(p.title);
+    var d = p.el.dom, field = d.querySelector && d.querySelector('input');
+    if (field && field.value) return field.value;
+    var all = d.querySelectorAll ? d.querySelectorAll('*') : [];
+    for (var i = 0; i < all.length && i < 200; i++) if (!all[i].firstElementChild && /\S/.test(all[i].textContent || '')) return all[i].textContent.trim();
+    return '';
+  };
+  /** The bar a stacked side region folds to: tapped, it opens the region or folds it again */
+  var sideBar = function (layout, p, t) {
+    var bar = p.splSideBar;
+    if (!bar) {
+      bar = p.splSideBar = document.createElement('button');
+      bar.type = 'button'; bar.className = 'spl-fit-side-bar';
+      var text = bar.splText = document.createElement('span'); text.className = 'spl-fit-side-bar-text'; bar.appendChild(text);
+      bar.addEventListener('click', function (e) {
+        e.stopPropagation(); p.splSideOpen = !p.splSideOpen;
+        try { layout.container.doLayout(false, true); } catch (err) { /* its own layout */ }
+      });
+    }
+    if (bar.parentNode !== t) t.appendChild(bar);
+    bar.style.display = '';
+    bar.splText.textContent = sideLabel(p);
+    return bar;
+  };
   var stackSides = function (layout) {
     var c = layout.center && layout.center.panel, target = layout.container && layout.container.getLayoutTarget && layout.container.getLayoutTarget();
     var t = target && target.dom;
@@ -1005,6 +1036,7 @@
       }
       on = on && W > 0;
       p.el.dom.classList.toggle('spl-fit-stacked', on);
+      if (!on) { p.el.dom.classList.remove('spl-fit-side-folded'); if (p.splSideBar) p.splSideBar.style.display = 'none'; p.splSideCh = null; }
       var bar = r.splitEl && r.splitEl.dom;
       if (bar) bar.classList.toggle('spl-fit-nav-split', on);
       // Back beside the content (a wider screen): its own width again, and the split lays out again
@@ -1012,9 +1044,20 @@
         if (was && p.splSideW) setTimeout(function () { try { p.setWidth(p.splSideW); layout.container.doLayout(false, true); } catch (e) { /* its own layout */ } }, 0);
         return;
       }
-      var top = c.el.dom.offsetTop, ch = c.getHeight(), h = Math.round(ch * SIDE_SHARE);
-      c.setPosition(0, k === 'west' ? top + h : top); c.setSize(W, ch - h);
-      p.setPosition(0, k === 'west' ? top : top + ch - h); p.setSize(W, h);
+      // Folded to a bar with its own label until tapped, so the content keeps the screen
+      // (Ext sizes the content to the whole height again on each layout; one it left as set keeps the old height)
+      var top = c.el.dom.offsetTop, ch = c.getHeight(), open = !!p.splSideOpen;
+      if (p.splSideCh && Math.abs(ch - p.splSideCh.content) <= 2) ch = p.splSideCh.all;
+      var h = open ? Math.round(ch * SIDE_SHARE) : 0, bar = sideBar(layout, p, t);
+      var rest = ch - SIDE_BAR - h, barTop = k === 'west' ? top : top + rest;
+      bar.style.top = barTop + 'px'; bar.style.width = W + 'px';
+      bar.classList.toggle('spl-fit-side-open', open);
+      bar.setAttribute('aria-expanded', open ? 'true' : 'false');
+      c.setPosition(0, k === 'west' ? top + SIDE_BAR + h : top); c.setSize(W, rest);
+      p.splSideCh = { content: rest, all: ch };
+      p.el.dom.classList.toggle('spl-fit-side-folded', !open);
+      if (!open) return;
+      p.setPosition(0, k === 'west' ? top + SIDE_BAR : top + rest + SIDE_BAR); p.setSize(W, h);
       // A list in it sized for the narrow column takes its new width
       var inner = p.body && p.body.dom, cs = inner && getComputedStyle(inner), room = inner ? inner.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight) : 0;
       if (room > 0 && p.items && p.items.each && Ext.grid && Ext.grid.GridPanel) p.items.each(function (i) {
@@ -1487,11 +1530,11 @@
 
   var singleOn = false, timer = null, closing = null, seen = false, last = '', icons = {};
   var schedule = function () { if (!singleOn) return; clearTimeout(timer); timer = setTimeout(sync, 60); };
-  var dom = function (c) { return c._isVue ? c.$el : c.el && c.el.dom; };
+  var dom = function (c) { return isVue(c) ? c.$el : c.el && c.el.dom; };
   var shown = function (c) {
     try {
       var el = dom(c);
-      if (!el || !el.offsetWidth || (c._isVue ? c.isVisible && !c.isVisible() : !c.rendered || c.hidden)) return false;
+      if (!el || !el.offsetWidth || (isVue(c) ? c.isVisible && !c.isVisible() : !c.rendered || c.hidden)) return false;
       var cs = getComputedStyle(el);
       return cs.display !== 'none' && cs.visibility !== 'hidden';
     } catch (e) { return false; }
@@ -1499,18 +1542,18 @@
   // DSM's own App windows (Ext SYNO.SDS.AppWindow, Vue windows of an App), not its dialogs
   var isApp = function (c) {
     if (!c) return false;
-    if (c._isVue) return !!c.appInstance && c.modal !== true && !/MessageBox|Modal|Dialog/i.test((c.$options && c.$options.name) || '');
+    if (isVue(c)) return !!c.appInstance && c.modal !== true && !/MessageBox|Modal|Dialog/i.test((c.$options && c.$options.name) || '');
     var App = window.SYNO && SYNO.SDS && SYNO.SDS.AppWindow;
     return !!(App && c instanceof App);
   };
-  var isRoot = function (c) { return c._isVue ? c.isStandaloneMainWindow === true : !!(c.el && c.el.hasClass('sds-standalone-main-window')); };
+  var isRoot = function (c) { return isVue(c) ? c.isStandaloneMainWindow === true : !!(c.el && c.el.hasClass('sds-standalone-main-window')); };
   var z = function (c) { var v = parseInt(getComputedStyle(dom(c)).zIndex, 10); return isNaN(v) ? 0 : v; };
   /** Every DSM window, shown or not */
   var allWindows = function () {
     var list = [], mgr = window.SYNO && SYNO.SDS && SYNO.SDS.WindowMgr;
     if (mgr && mgr.windowList && mgr.windowList.forEach) mgr.windowList.forEach(function (e) { if (e && e.component && list.indexOf(e.component) < 0) list.push(e.component); });
     // (An older DSM framework, as a package ships it: its windows by id)
-    else if (mgr && mgr.list && typeof mgr.list === 'object') Object.keys(mgr.list).forEach(function (k) { var e = mgr.list[k], c = e && e.component || e; if (c && (c._isVue || c.el) && list.indexOf(c) < 0) list.push(c); });
+    else if (mgr && mgr.list && typeof mgr.list === 'object') Object.keys(mgr.list).forEach(function (k) { var e = mgr.list[k], c = e && e.component || e; if (c && (isVue(c) || c.el) && list.indexOf(c) < 0) list.push(c); });
     if (window.Ext && Ext.WindowMgr) Ext.WindowMgr.each(function (w) { if (list.indexOf(w) < 0) list.push(w); });
     return list;
   };
@@ -1522,12 +1565,12 @@
   // Back steps inside one App window: its open menu, then (Control Panel
   // style) a page opened from the App's home grid
   var vueHome = function (c) {
-    if (!c._isVue || !c.selectedVal || !c.$el) return null;
+    if (!isVue(c) || !c.selectedVal || !c.$el) return null;
     return c.$el.querySelector('.module-list-layout [class*="-home"]');
   };
   var inner = function (c) {
     var steps = [];
-    if (c._isVue) {
+    if (isVue(c)) {
       if (c.innerShowModules === true) steps.push({ kind: 'menu', close: function () { if (c.onClickModuleListMask) c.onClickModuleListMask(); else c.innerShowModules = false; } });
       var home = vueHome(c);
       if (home) steps.push({ kind: 'home', close: function () { home.click(); } });
@@ -1556,7 +1599,7 @@
       // DSM marks every Vue App window in a standalone page isStandalone, and such a
       // window refuses to close; only the first App needs that, so let an App opened
       // on top of it close through DSM's own path (unsaved-change prompts included)
-      if (!isRoot(c)) steps.push({ kind: 'app', close: function () { if (c._isVue && c.isStandalone) c.isStandalone = false; c.close(); } });
+      if (!isRoot(c)) steps.push({ kind: 'app', close: function () { if (isVue(c) && c.isStandalone) c.isStandalone = false; c.close(); } });
     });
     // An App's own page (no DSM App window): its side menu
     var nav = !list.some(isApp) && foundNav(pageRoot());
@@ -1570,7 +1613,7 @@
   };
   var iconUrl = function (c) {
     var url = '';
-    if (c._isVue) url = c.iconUrl || (c.getIcon && c.getIcon()) || '';
+    if (isVue(c)) url = c.iconUrl || (c.getIcon && c.getIcon()) || '';
     else if (c.header && c.header.dom) { var m = /url\(["']?([^"')]+)/.exec(getComputedStyle(c.header.dom).backgroundImage || ''); url = m ? m[1] : ''; }
     try { url = url ? new URL(String(url), location.href).href : ''; } catch (e) { url = ''; }
     return url && new URL(url).origin === location.origin ? url : '';
@@ -1588,7 +1631,7 @@
   };
   var title = function (c) {
     try {
-      if (!c._isVue) return plain(c.title);
+      if (!isVue(c)) return plain(c.title);
       // getTitle() can be DSM's string key ("tree:leaf_control_panel"); the header shows the text
       var shownTitle = c.$el && c.$el.querySelector('.v-window-header-title');
       return plain(shownTitle && shownTitle.textContent.trim() ? shownTitle.textContent : c.formalTitle || c.currentTitle || (c.getTitle ? c.getTitle() : c.title));
@@ -1597,13 +1640,13 @@
   var page = function (c) {
     var nav = foundNav(dom(c));
     if (nav) return nav.page();
-    if (!c._isVue) return c.splPage ? c.splPage.textContent || '' : '';
+    if (!isVue(c)) return c.splPage ? c.splPage.textContent || '' : '';
     // The page list keeps the open page's entry marked, even with the menu closed
     var item = c.$el && c.selectedVal && c.$el.querySelector('.module-list-layout .module-item-option.activated .module-item-text');
     return item ? plain(item.textContent) : '';
   };
   // The Ext side navigation is a menu at phone width only; sideways it sits beside the content
-  var hasMenu = function (c) { return !!foundNav(dom(c)) || (c._isVue ? !!(c.$el && c.$el.querySelector('.app-window-header-hamburger')) : !!c.splNav && narrow()); };
+  var hasMenu = function (c) { return !!foundNav(dom(c)) || (isVue(c) ? !!(c.$el && c.$el.querySelector('.app-window-header-hamburger')) : !!c.splNav && narrow()); };
   /** A side menu found in a window or page (sideNav()), while it is on screen */
   var foundNav = function (el) { var n = el && el.splPnav; return n && n.row.isConnected && narrow() ? n : null; };
   /** The page of an App that shows no DSM App window (its own page in the standalone desktop) */
@@ -1654,10 +1697,11 @@
     if (!singleOn) return;
     var list = windows(), apps = list.filter(isApp);
     if (embedded) {
-      apps = deskApps(apps);
+      apps = deskApps(dropCancelled(apps));
       list = list.filter(function (c) { return !c.splDesk; });
       if (!apps.length) { seen = false; showDesk(list); return; }
       if (deskList) deskList.hidden = true;
+      openingShown(apps[0]);
     }
     if (hostedId) {
       // The page's first App stays loaded under a hosted App, out of sight
@@ -1669,7 +1713,7 @@
         hosted = apps.filter(function (c) { return appId(c) === hostedId; })[0] || apps.filter(function (c) { return !isRoot(c) && hostBefore.indexOf(c) < 0; })[0] || null;
         if (!hosted) {
           // An App DSM shows again keeps the size it had while the page was hidden (none): lay it out again
-          var again = allWindows().filter(function (c) { return !c._isVue && isApp(c) && appId(c) === hostedId && c.rendered && !c.hidden && c.el && c.el.dom && !c.el.dom.offsetWidth; })[0];
+          var again = allWindows().filter(function (c) { return !isVue(c) && isApp(c) && appId(c) === hostedId && c.rendered && !c.hidden && c.el && c.el.dom && !c.el.dom.offsetWidth; })[0];
           if (again) { try { if (again.maximized && again.fitContainer) again.fitContainer(); else again.setSize(window.innerWidth, window.innerHeight); } catch (e) { /* Found on a later pass or by the shell's wait */ } schedule(); }
           return;
         }
@@ -1677,7 +1721,7 @@
       }
     }
     apps.forEach(function (c) {
-      if (c._isVue) { if (!c.$el.classList.contains('spl-single-app')) c.$el.classList.add('spl-single-app'); }
+      if (isVue(c)) { if (!c.$el.classList.contains('spl-single-app')) c.$el.classList.add('spl-single-app'); }
       else if (!c.el.hasClass('spl-single-app')) fit(c);
     });
     if (apps.length) { seen = true; clearTimeout(closing); closing = null; }
@@ -1687,7 +1731,7 @@
     }
     if (!apps.length) { if (!seen) reportPage(list); return; }
     // A dialog on top of a widened Vue App: it is placed in the scrolled page area
-    if (list[0] !== apps[0] && apps[0]._isVue && apps[0].$el && apps[0].$el.splNeed) wideHome();
+    if (list[0] !== apps[0] && isVue(apps[0]) && apps[0].$el && apps[0].$el.splNeed) wideHome();
     sheets(list);
     layers();
     scanEdges();
@@ -1724,10 +1768,91 @@
     } catch (e) { /* No icons drawn yet */ }
     return out;
   };
-  var openFromDesk = function (id) {
-    deskLaunched = id;
-    try { SYNO.SDS.AppLaunch(id); } catch (e) { deskLaunched = ''; }
-    schedule();
+  // ---- Opening an App from the list ---------------------------------------
+  // DSM loads an App's scripts before its window exists, seconds in which the
+  // page would not change. Like DSM, a tap shows the App at once: its icon with
+  // a turning arc and its name (dsm-fit.css), until its window shows without
+  // DSM's loading mask. No time limit decides anything; a window still under
+  // its mask after OPEN_MASK_WAIT shows as it is, as on DSM's desktop, DSM's
+  // own mask being the feedback from then on (a long recording list). Back
+  // cancels: the App's window is closed when it comes.
+  var OPEN_MASK_WAIT = 1500, OPEN_FADE = 160;
+  var opening = null, cancelled = {};
+  var showOpening = function (it) {
+    endOpening(true);
+    var el = document.createElement('div');
+    el.className = 'spl-fit-opening';
+    try { if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) el.classList.add('spl-fit-opening-still'); } catch (e) { /* motion stays on */ }
+    el.setAttribute('role', 'progressbar');
+    el.setAttribute('aria-label', it.title || '');
+    var orbit = document.createElement('div');
+    orbit.className = 'spl-fit-opening-orbit';
+    var arc = document.createElement('div');
+    arc.className = 'spl-fit-opening-arc';
+    orbit.appendChild(arc);
+    if (it.icon) { var icon = document.createElement('img'); icon.src = it.icon; icon.alt = ''; orbit.appendChild(icon); }
+    el.appendChild(orbit);
+    var name = document.createElement('div');
+    name.className = 'spl-fit-opening-title';
+    name.textContent = it.title || '';
+    el.appendChild(name);
+    document.body.appendChild(el);
+    var mine = opening = { id: it.id, el: el, masked: 0, poll: 0 };
+    // Not every window framework tells the page when its window shows (a package's own Vue 3 or a
+    // late Ext render): while the cover is up, look again a few times a second
+    var poll = function () { if (opening !== mine) return; schedule(); mine.poll = setTimeout(poll, 250); };
+    mine.poll = setTimeout(poll, 250);
+  };
+  /** The App is on screen (or the opening was cancelled): fade the cover out, or drop it at once */
+  var endOpening = function (now) {
+    if (!opening) return;
+    var el = opening.el;
+    clearTimeout(opening.masked); clearTimeout(opening.poll);
+    opening = null;
+    if (now) { el.remove(); return; }
+    el.classList.add('spl-fit-opening-out');
+    setTimeout(function () { el.remove(); }, OPEN_FADE);
+  };
+  /** The App asked for has its window up: done once DSM's own loading mask is gone */
+  var openingShown = function (app) {
+    if (!opening) return;
+    // Its panes fold under the cover: the cover fades onto the phone layout, not the desktop one
+    step(function () { var root = dom(app); if (root && narrow()) foldPanes(root); });
+    if (!busy(app)) { endOpening(); return; }
+    var mine = opening;
+    if (!mine.masked) mine.masked = setTimeout(function () { if (opening === mine) endOpening(); }, OPEN_MASK_WAIT);
+    clearTimeout(busyTimer); busyTimer = setTimeout(schedule, 250);
+  };
+  var cancelOpening = function () {
+    if (!opening) return false;
+    cancelled[opening.id] = 1; deskLaunched = '';
+    endOpening(true);
+    last = ''; schedule();
+    return true;
+  };
+  /** A window of an App whose opening was cancelled: closed as it comes */
+  var dropCancelled = function (apps) {
+    return apps.filter(function (c) {
+      var id = appId(c);
+      if (!cancelled[id] || c.splSeen) return true;
+      delete cancelled[id];
+      try { c.close(); } catch (e) { dom(c).classList.add('spl-fit-under'); }
+      return false;
+    });
+  };
+  var openFromDesk = function (it) {
+    deskLaunched = it.id;
+    delete cancelled[it.id];
+    showOpening(it);
+    last = ''; schedule();
+    // DSM builds the App on this thread: launch once the cover has been painted
+    var go = function () {
+      if (!opening || opening.id !== it.id) return;
+      try { SYNO.SDS.AppLaunch(it.id); } catch (e) { deskLaunched = ''; endOpening(true); }
+      schedule();
+    };
+    if (window.requestAnimationFrame) requestAnimationFrame(function () { requestAnimationFrame(function () { setTimeout(go, 0); }); });
+    else setTimeout(go, 16);
   };
   var drawDesk = function () {
     var items = deskItems(), key = JSON.stringify(items);
@@ -1751,7 +1876,7 @@
       row.className = 'spl-fit-launcher-item'; row.type = 'button'; row.setAttribute('role', 'listitem');
       if (it.icon) { var icon = document.createElement('img'); icon.src = it.icon; icon.alt = ''; row.appendChild(icon); }
       var label = document.createElement('span'); label.textContent = it.title; row.appendChild(label);
-      row.addEventListener('click', function () { openFromDesk(it.id); });
+      row.addEventListener('click', function () { openFromDesk(it); });
       return row;
     });
     deskList.replaceChildren.apply(deskList, rows);
@@ -1777,7 +1902,8 @@
     deskLaunched = '';
     if (!deskFailed) drawDesk();
     if (deskList) deskList.hidden = false;
-    var state = { id: '', title: '', page: '', menu: false, icon: '', back: stack(list).length };
+    // While an App opens, back cancels it (one step)
+    var state = { id: '', title: '', page: '', menu: false, icon: '', back: stack(list).length + (opening ? 1 : 0) };
     var text = JSON.stringify(state);
     if (text !== last) { last = text; post({ internal: 'fitApp', app: state }); }
   };
@@ -1815,7 +1941,7 @@
     clearTimeout(closing); closing = null;
     windows().forEach(function (c) {
       if (isRoot(c)) return;
-      try { if (c._isVue && c.isStandalone) c.isStandalone = false; c.close(); } catch (e) { /* DSM keeps it */ }
+      try { if (isVue(c) && c.isStandalone) c.isStandalone = false; c.close(); } catch (e) { /* DSM keeps it */ }
     });
   };
   /** Opens a DSM App in this page; false when this DSM has no such App */
@@ -1837,6 +1963,7 @@
   };
   /** Back from the shell: close the top step (a dialog, a menu, a page, an App opened from the App) */
   var back = function () {
+    if (cancelOpening()) return;
     var steps = stack(windows());
     if (steps.length) { try { steps[0].close(); } catch (e) { /* the next report says what is left */ } }
     last = ''; schedule();
@@ -1851,23 +1978,67 @@
   var sheetOpen = false;
   var floating = function (list) {
     var found = [].slice.call(document.querySelectorAll('.tutorial-mask > *'));
-    (list || windows()).forEach(function (c) { if (c._isVue && c.modal && c.$el) found.push(c.$el); });
+    (list || windows()).forEach(function (c) { if (isVue(c) && c.modal && c.$el) found.push(c.$el); });
     return found.filter(function (el) {
       if (!el.offsetWidth || !el.isConnected) return false;
       var cs = getComputedStyle(el);
       return cs.visibility !== 'hidden' && (cs.position === 'absolute' || cs.position === 'fixed');
     });
   };
+  /** The flex row of two or more boxes in a box whose content runs past the box's right edge */
+  var spillOf = function (el) {
+    var right = el.getBoundingClientRect().right + 2, all = el.querySelectorAll('*');
+    for (var i = 0; i < all.length && i < 300; i++) {
+      var e = all[i], row = e.parentElement;
+      if (!e.offsetWidth || e.getBoundingClientRect().right <= right || !row || row === el || e.closest(LEAF_SKIP)) continue;
+      var cs = getComputedStyle(row);
+      if (/flex/.test(cs.display) && /^row/.test(cs.flexDirection) && flowKids(row).length >= 2) return row;
+    }
+    return null;
+  };
+  /** Small boxes the sheet pins over its lower half (a pager at the bottom of a welcome page)
+   * that the flowed text now runs under: they leave the overlay for the flow, after the text */
+  var PINNED_MAX = 80;
+  var unpin = function (el) {
+    var sr = el.getBoundingClientRect(), all = el.querySelectorAll('*'), pinned = [], texts = [];
+    for (var i = 0; i < all.length && i < 400; i++) {
+      var e = all[i];
+      if (!e.offsetWidth || e.closest(LEAF_SKIP)) continue;
+      var pos = getComputedStyle(e).position;
+      if (pos === 'absolute') {
+        var r = e.getBoundingClientRect();
+        if (!e.classList.contains('spl-fit-sheet-static') && r.height <= PINNED_MAX && r.top > sr.top + sr.height / 2) pinned.push({ e: e, r: r });
+      } else if (!e.firstElementChild && /\S/.test(e.textContent || '')) texts.push(e);
+    }
+    pinned.forEach(function (p) {
+      var under = texts.some(function (t) {
+        if (p.e.contains(t) || t.closest('.spl-fit-sheet-static')) return false;
+        var tr = t.getBoundingClientRect();
+        return tr.bottom > p.r.top + 1 && tr.top < p.r.bottom - 1 && tr.right > p.r.left + 1 && tr.left < p.r.right - 1;
+      });
+      if (under) p.e.classList.add('spl-fit-sheet-static');
+    });
+  };
   var sheets = function (list) {
     if (!narrow()) return;
     var vw = window.innerWidth, vh = window.innerHeight, boxes = floating(list);
     boxes.forEach(function (el) {
+      // (One that fits the screen but whose content runs past its own edge, such as a welcome
+      // page's picture beside its text, also becomes a sheet: its row wraps and the sheet scrolls)
+      var spill = el.classList.contains('spl-fit-sheet-flow') ? null : spillOf(el);
       if (!el.classList.contains('spl-fit-sheet')) {
         var r = el.getBoundingClientRect();
-        if (r.left >= 8 && r.right <= vw - 8 && r.top >= 0 && r.bottom <= vh) return;
+        if (!spill && r.left >= 8 && r.right <= vw - 8 && r.top >= 0 && r.bottom <= vh) return;
         el.classList.add('spl-fit-sheet');
         if (el.parentElement && el.parentElement.classList.contains('tutorial-mask')) el.classList.add('spl-fit-sheet-pad');
       }
+      if (spill) {
+        el.classList.add('spl-fit-sheet-flow');
+        // (Wrapped for as long as it is a sheet, not as a repair a new width undoes)
+        spill.classList.add('spl-fit-wrap');
+        for (var a = spill; a && a !== el; a = a.parentElement) a.classList.add('spl-fit-sheet-chain');
+      }
+      if (el.classList.contains('spl-fit-sheet-flow')) unpin(el);
       // Centered in what it is placed in; a tall one starts at the top gutter and scrolls inside
       var room = el.offsetParent ? el.offsetParent.clientHeight : vh;
       var top = Math.max(16, Math.round((Math.min(room, vh) - el.offsetHeight) / 2)) + 'px';
@@ -1922,7 +2093,7 @@
       try {
         var nav = foundNav(dom(c));
         if (nav) nav.open(false);
-        if (c._isVue) { if (c.innerShowModules === true) { if (c.onClickModuleListMask) c.onClickModuleListMask(); else c.innerShowModules = false; } }
+        if (isVue(c)) { if (c.innerShowModules === true) { if (c.onClickModuleListMask) c.onClickModuleListMask(); else c.innerShowModules = false; } }
         else if (c.splNavOpen && c.splNavOpen()) c.splNavOpen(false);
       } catch (e) { /* the next report says what is open */ }
     });
@@ -1932,7 +2103,7 @@
     var app = windows().filter(isApp)[0], nav = foundNav(app ? dom(app) : pageRoot());
     if (nav) { if (app) wideHome(); nav.open(!nav.isOpen()); schedule(); return; }
     if (!app) return;
-    if (app._isVue) { wideHome(); if (app.onClickHamburgerIcon) app.onClickHamburgerIcon(); }
+    if (isVue(app)) { wideHome(); if (app.onClickHamburgerIcon) app.onClickHamburgerIcon(); }
     else if (app.splNavOpen) app.splNavOpen(!app.splNavOpen());
     schedule();
   };
@@ -2628,7 +2799,72 @@
     if (found) { navs.push(makeNav(root, found)); last = ''; schedule(); }
   };
 
-  // b. Flex rows that run past their edge
+  // b. Panes side by side (an App drawn with flex boxes, not Ext's border layout): a row that
+  // takes most of the screen, where panes of a fixed width (a tree of devices, a list of alerts)
+  // leave the pane that grows under PANE_ROOM of the row, turns into a column like stackSides():
+  // the growing pane takes the height, each fixed pane folds to a bar with its first text, and a
+  // tap on the bar opens it to PANE_SHARE of the column (dsm-fit.css) or folds it again.
+  var PANE_ROOM = 0.6, PANE_MIN = 120, PANE_BAR = 40;
+  var paneLabel = function (p) {
+    var all = p.querySelectorAll('*');
+    for (var i = 0; i < all.length && i < 300; i++) {
+      var e = all[i];
+      if (!e.firstElementChild && e.offsetWidth && /\S/.test(e.textContent || '')) return plain(e.textContent).slice(0, 60);
+    }
+    var tip = p.querySelector('[title], [aria-label]');
+    return tip ? (tip.getAttribute('title') || tip.getAttribute('aria-label') || '').slice(0, 60) : '';
+  };
+  /** The colour under a pane, for its bar to cover the folded content */
+  var paneBack = function (p) {
+    for (var e = p; e && e.nodeType === 1; e = e.parentElement) {
+      var c = getComputedStyle(e).backgroundColor;
+      if (c && c !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(c)) return c;
+    }
+    return '#fff';
+  };
+  var foldPane = function (p) {
+    p.style.setProperty('--spl-fit-pane-bg', paneBack(p));
+    if (p.splPane) return;
+    p.splPane = true;
+    // The bar takes the tap before the pane's own content under it
+    p.addEventListener('click', function (e) {
+      if (!p.classList.contains('spl-fit-pane')) return;
+      var open = p.classList.contains('spl-fit-pane-open');
+      if (open && e.clientY > p.getBoundingClientRect().top + PANE_BAR) return;
+      e.stopPropagation(); e.preventDefault();
+      p.classList.toggle('spl-fit-pane-open', !open);
+      p.setAttribute('aria-expanded', open ? 'false' : 'true');
+      // The App measures its boxes again (a grid of videos, a scrolled list)
+      setTimeout(function () { try { window.dispatchEvent(new Event('resize')); } catch (err) { /* its own size */ } schedule(); }, 0);
+    }, true);
+  };
+  var foldPanes = function (root) {
+    var vw = window.innerWidth, vh = window.innerHeight, all = [root].concat(Array.prototype.slice.call(root.querySelectorAll('div, section, main, aside'), 0, CAP));
+    for (var i = 0; i < all.length; i++) {
+      var row = all[i];
+      if (row.classList.contains('spl-fit-panes') || row.offsetWidth < vw * 0.85 || row.offsetHeight < vh * 0.5 || row.closest(LEAF_SKIP) || row.classList.contains('spl-fit-nav-row') || row.closest('.spl-fit-nav-side')) continue;
+      var cs = getComputedStyle(row);
+      if (!/flex/.test(cs.display) || !/^row/.test(cs.flexDirection)) continue;
+      var kids = flowKids(row), main = null, sides = [];
+      if (kids.length < 2 || kids.length > 3) continue;
+      kids.forEach(function (c) { if ((parseFloat(getComputedStyle(c).flexGrow) || 0) > 0 && (!main || c.offsetWidth > main.offsetWidth)) main = c; });
+      if (!main) continue;
+      kids.forEach(function (c) { if (c !== main && c.offsetWidth >= PANE_MIN && c.offsetHeight >= main.offsetHeight * 0.6) sides.push(c); });
+      var mr = main.getBoundingClientRect(), shown = Math.min(mr.right, vw) - Math.max(mr.left, 0);
+      if (!sides.length || shown >= row.clientWidth * PANE_ROOM) continue;
+      row.classList.remove('spl-fit-wrap');
+      row.classList.add('spl-fit-panes'); keep(row, 'spl-fit-panes');
+      main.classList.add('spl-fit-pane-main'); keep(main, 'spl-fit-pane-main');
+      sides.forEach(function (p) {
+        p.classList.add('spl-fit-pane'); keep(p, 'spl-fit-pane');
+        p.setAttribute('data-spl-pane', paneLabel(p));
+        if (p.getAttribute('aria-expanded') === null) p.setAttribute('aria-expanded', 'false');
+        foldPane(p);
+      });
+    }
+  };
+
+  // c. Flex rows that run past their edge
   // An item under CRUSHED_ITEM px with text, its content (or a box in it) wider than it
   var CRUSHED_ITEM = 80, CRUSHED_LOOK = 12;
   var crushedItem = function (c) {
@@ -2639,7 +2875,7 @@
     return false;
   };
   var wrapOne = function (e) {
-    if (!e.firstElementChild || !e.firstElementChild.nextElementSibling || e.classList.contains('spl-fit-wrap') || e.classList.contains('spl-fit-nav-row') || !e.offsetWidth) return;
+    if (!e.firstElementChild || !e.firstElementChild.nextElementSibling || e.classList.contains('spl-fit-wrap') || e.classList.contains('spl-fit-nav-row') || e.classList.contains('spl-fit-panes') || !e.offsetWidth) return;
     // A number and its unit stay on one line (units())
     if (numUnit(e)) return;
     var cs = getComputedStyle(e);
@@ -2673,6 +2909,9 @@
         if (e.nodeType === 1 && e.isConnected && !ours(e)) nodes.push(e);
       }
     }
+    // A pane row the App just drew folds before it is painted: the side-by-side layout never shows
+    var vw = window.innerWidth, vh = window.innerHeight;
+    nodes.forEach(function (n) { if (n.offsetWidth >= vw * 0.85 && n.offsetHeight >= vh * 0.5) step(function () { foldPanes(n); }); });
     nodes.forEach(function (n) { step(function () { wrapOne(n); }); });
     var left = ADDED_INSIDE;
     nodes.forEach(function (n) {
@@ -2959,6 +3198,7 @@
     var before = repairs.length;
     // Each repair on its own: one that fails in a browser leaves the others
     step(function () { sideNav(root); });
+    step(function () { foldPanes(root); });
     step(function () { units(root); });
     step(function () { wrapRows(root); });
     step(function () { gutters(root); });
@@ -3014,7 +3254,7 @@
       });
       findOverlaps(root).forEach(function (rec) { flow(rec); reflowed.push(rec); });
       // Content that data filled in may now be cut off: keep a readable width
-      windows().forEach(function (w) { if (w._isVue) keepWideVue(w); else keepWide(w); });
+      windows().forEach(function (w) { if (isVue(w)) keepWideVue(w); else keepWide(w); });
       // 1. Fit or expand
       // (graphics in an App underneath keep their state until it is on top again)
       fits = fits.filter(function (rec) { if (rec.root !== root) return true; var keep = fitOne(rec, root); if (!keep) unfit(rec); return keep; });

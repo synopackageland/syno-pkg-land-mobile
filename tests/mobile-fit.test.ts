@@ -349,7 +349,7 @@ function dsmPage({ app = 'SYNO.SDS.AdminCenter.Application', type = 'app', nativ
       return win;
     },
     /** A Vue window in SYNO.SDS.WindowMgr.windowList */
-    vueWindow({ title = 'Control Panel', id = 'SYNO.SDS.AdminCenter.Application', root = false, name = 'PageListAppWindow', modal = false, menu = false } = {}) {
+    vueWindow({ title = 'Control Panel', id = 'SYNO.SDS.AdminCenter.Application', root = false, name = 'PageListAppWindow', modal = false, menu = false, vue3 = false } = {}) {
       const items: Record<string, any> = {
         '.v-window-header-title': { textContent: title },
         '.app-window-header-hamburger': menu ? {} : null,
@@ -368,6 +368,8 @@ function dsmPage({ app = 'SYNO.SDS.AdminCenter.Application', type = 'app', nativ
         /** Open a module page from the App's home grid */
         select(page: string) { c.selectedVal = page; items['.module-list-layout .module-item-option.activated .module-item-text'] = { textContent: page }; items['.module-list-layout [class*="-home"]'] = { click() { c.select(''); } }; },
       };
+      // A Vue 3 component proxy has no _isVue: its internal instance is `$`
+      if (vue3) { delete c._isVue; c.$ = {}; }
       c.$el = el({ style: { zIndex: String(z++) }, querySelector: (s: string) => (s.includes('.activated') || s.includes('-home')) && !c.selectedVal ? null : items[s] ?? null });
       windowList.push({ id: String(windowList.length), component: c });
       return c;
@@ -2467,6 +2469,41 @@ test('flex rows: a row that fits only by crushing an item below what it holds wr
   assert.ok(!size.cls.has('spl-fit-wrap'));
 });
 
+/** Panes side by side drawn with flex boxes (Surveillance Station's Monitor Center): a fixed tree beside a growing view */
+function paneRow({ tree = 220, height = 700 } = {}) {
+  const side = node('div', { box: { left: 0, top: 0, width: tree, height }, cs: { flexGrow: '0' } }, [node('div', { box: { left: 0, top: 0, width: tree, height: 30 }, text: 'Layouts' })]);
+  const view = node('div', { box: { left: tree, top: 0, width: 393 - tree, height }, cs: { flexGrow: '1' } }, [node('div', { box: { left: tree, top: 300, width: 393 - tree, height: 30 }, text: 'Drag and drop devices' })]);
+  const row = node('div', { box: { left: 0, top: 0, width: 393, height }, cs: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' } }, [side, view]);
+  return { row, side, view };
+}
+
+test('panes: a fixed pane that leaves the growing one too little folds to a bar with its text, opened by a tap', () => {
+  const { row, side, view } = paneRow();
+  contentPage([row]);
+  assert.ok(row.cls.has('spl-fit-panes'));
+  assert.ok(view.cls.has('spl-fit-pane-main'));
+  assert.ok(side.cls.has('spl-fit-pane'));
+  assert.equal(side.getAttribute('data-spl-pane'), 'Layouts');
+  assert.equal(side.getAttribute('aria-expanded'), 'false');
+  assert.ok(!row.cls.has('spl-fit-wrap'), 'a column, not a wrapped row');
+  // A tap on the bar opens it, another folds it again
+  side.fire('click', { clientY: 10 });
+  assert.ok(side.cls.has('spl-fit-pane-open')); assert.equal(side.getAttribute('aria-expanded'), 'true');
+  side.fire('click', { clientY: 400 });
+  assert.ok(side.cls.has('spl-fit-pane-open'), 'a tap in its content is the content\'s own');
+  side.fire('click', { clientY: 10 });
+  assert.ok(!side.cls.has('spl-fit-pane-open'));
+  const css = fitCss();
+  assert.match(css, /\.spl-fit-panes \{ flex-direction: column !important;/);
+  assert.match(css, /\.spl-fit-pane::before \{\s*content: attr\(data-spl-pane\)/);
+  // A growing pane with room, or a short row (a toolbar), keeps its layout
+  for (const setup of [{ tree: 120 }, { height: 200 }]) {
+    const other = paneRow(setup);
+    contentPage([other.row]);
+    assert.ok(!other.row.cls.has('spl-fit-panes'), JSON.stringify(setup));
+  }
+});
+
 test('numbers and units: a box holding only a number and its unit never breaks between them', () => {
   const size = node('span', { box: { left: 200, top: 50, width: 60, height: 20 }, cs: { display: 'inline-block' }, text: '1.2 TB' });
   const parts = node('div', { box: { left: 200, top: 80, width: 80, height: 20 } }, [node('span', { box: { left: 200, top: 80, width: 40, height: 20 }, text: '505.0' }), node('span', { box: { left: 244, top: 80, width: 20, height: 20 }, text: ' GB' })]);
@@ -2694,6 +2731,7 @@ function sideRegion({ side = 'east', width = 78, set = 200, screen = 360 } = {})
   (d.ext.core.layout as any).BorderLayout = BorderLayout;
   Object.assign(d.ext.full as any, { grid: { GridPanel } });
   d.p.run(fitJs()); d.defineDsm(); d.start();
+  d.p.ctx.document.createElement = (tag: string) => new FakeNode(tag);
   d.p.ctx.getComputedStyle = () => ({ display: '', visibility: '', zIndex: '', paddingLeft: '4px', paddingRight: '4px', backgroundImage: '' });
   const comp = (w: number, extra: Record<string, unknown> = {}): any => {
     const dom = new FakeNode('div', { box: { left: 0, top: 10, width: w, height: 700 } });
@@ -2720,26 +2758,43 @@ function sideRegion({ side = 'east', width = 78, set = 200, screen = 360 } = {})
   return { d, layout, panel, center, grid, target, lay: () => { layout.onLayout(); d.p.advance(10); }, relaid: () => relaid };
 }
 
-test('side regions: a filter column squeezed or crushing the content on a phone lies across it, below (east) or above (west)', () => {
-  // East, set to 200 px and squeezed to 78: the content takes the width, the column 35% below it
+test('side regions: a filter column squeezed or crushing the content on a phone lies across it, folded to a bar below (east) or above (west)', () => {
+  // East, set to 200 px and squeezed to 78: the content takes the width, the column folds to a bar below it
   const east = sideRegion();
+  east.panel.title = 'Filter by status';
+  east.layout.container.doLayout = () => { east.layout.onLayout(); };
   east.lay();
   assert.ok(east.panel.el.dom.cls.has('spl-fit-stacked'));
-  assert.deepEqual(east.center.sized.at(-1), [360, 455]); assert.deepEqual(east.center.placed.at(-1), [0, 10]);
-  assert.deepEqual(east.panel.sized.at(-1), [360, 245]); assert.deepEqual(east.panel.placed.at(-1), [0, 465]);
+  assert.ok(east.panel.el.dom.cls.has('spl-fit-side-folded'), 'folded at first');
+  assert.deepEqual(east.center.sized.at(-1), [360, 660]); assert.deepEqual(east.center.placed.at(-1), [0, 10]);
+  const bar = east.target.children.find((n: any) => n.cls.has('spl-fit-side-bar')) as any;
+  assert.ok(bar, 'a bar for it');
+  assert.equal(bar.textContent, 'Filter by status');
+  assert.equal(bar.style.top, '670px'); assert.equal(bar.style.width, '360px');
   assert.ok(east.layout.east.splitEl.dom.cls.has('spl-fit-nav-split'), 'its splitbar is out of sight');
+  // Tapped: the column opens, 35% of the height below its bar
+  bar.fire('click'); east.d.p.advance(10);
+  assert.ok(!east.panel.el.dom.cls.has('spl-fit-side-folded'));
+  assert.deepEqual(east.center.sized.at(-1), [360, 415]);
+  assert.equal(bar.style.top, '425px'); assert.equal(bar.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(east.panel.sized.at(-1), [360, 245]); assert.deepEqual(east.panel.placed.at(-1), [0, 465]);
   assert.equal(east.grid.getWidth(), 352, 'its list takes the new width, less the padding');
-  // Laid out again: stays stacked
-  east.lay(); assert.ok(east.panel.el.dom.cls.has('spl-fit-stacked'));
-  // West, 200 of 360 px: the content left 160 px, under 60%: the column goes above it
+  // Laid out again: stays stacked and open; tapped again: folded
+  east.lay(); assert.ok(east.panel.el.dom.cls.has('spl-fit-stacked')); assert.deepEqual(east.center.sized.at(-1), [360, 415]);
+  bar.fire('click'); east.d.p.advance(10);
+  assert.ok(east.panel.el.dom.cls.has('spl-fit-side-folded')); assert.deepEqual(east.center.sized.at(-1), [360, 660]);
+  // West, 200 of 360 px: the content left 160 px, under 60%: its bar goes above the content
   const west = sideRegion({ side: 'west', width: 200, set: 0 });
   west.lay();
-  assert.deepEqual(west.panel.placed.at(-1), [0, 10]); assert.deepEqual(west.center.placed.at(-1), [0, 255]);
+  assert.deepEqual(west.center.placed.at(-1), [0, 50]);
+  west.panel.splSideOpen = true; west.lay();
+  assert.deepEqual(west.panel.placed.at(-1), [0, 50]); assert.deepEqual(west.center.placed.at(-1), [0, 295]);
   // Turned to a wide screen: back beside the content at its own width, and the split lays out again
   east.d.p.ctx.innerWidth = 800; east.d.p.ctx.screen.width = 800;
   east.lay();
   assert.ok(!east.panel.el.dom.cls.has('spl-fit-stacked'));
-  assert.deepEqual(east.panel.sized.at(-1), [78]); assert.ok(east.relaid() >= 1);
+  assert.ok(!east.panel.el.dom.cls.has('spl-fit-side-folded')); assert.equal(bar.style.display, 'none');
+  assert.deepEqual(east.panel.sized.at(-1), [78]);
 });
 
 test('side regions: a column that fits its set width and leaves the content room, and wide screens, keep the layout', () => {
@@ -2806,7 +2861,8 @@ function embeddedDesk({ path = '/webman/3rdparty/Cams/', taskbar = true, width =
       appendChild(c: unknown) { n.children.push(c); return c; },
       setAttribute(k: string, v: string) { n.attrs[k] = v; },
       addEventListener(type: string, fn: () => void) { handlers[type] = fn; },
-      replaceChildren(...c: unknown[]) { n.children = c; }, matches: () => false });
+      replaceChildren(...c: unknown[]) { n.children = c; }, matches: () => false,
+      remove() { const body = d.p.ctx.document.body as any; body.children = body.children.filter((c: unknown) => c !== n); n.removed = true; } });
     n.className = '';
     made.push(n);
     return n;
@@ -2836,7 +2892,8 @@ function embeddedDesk({ path = '/webman/3rdparty/Cams/', taskbar = true, width =
   };
   const list = () => (d.p.ctx.document.body as any).children.find((n: any) => /spl-fit-launcher/.test(n.className));
   const rows = () => list().children.filter((n: any) => n.tagName === 'BUTTON');
-  return { d, bar, made, launched, open, list, rows };
+  const cover = () => (d.p.ctx.document.body as any).children.find((n: any) => n.className === 'spl-fit-opening');
+  return { d, bar, made, launched, open, list, rows, cover };
 }
 
 test('embedded desktop: a package page running DSM\'s desktop becomes a list of its Apps instead of a shrunken desktop', () => {
@@ -2850,10 +2907,26 @@ test('embedded desktop: a package page running DSM\'s desktop becomes a list of 
   assert.equal(e.rows()[0].children.find((n: any) => n.tagName === 'IMG').src, 'https://nas.example.com:5001/webman/3rdparty/Cams/images/SYNO.Cams.Camera.png?v=1');
   // The list reports the package itself: the shell keeps its name, and back leaves
   assert.deepEqual(e.d.apps().at(-1), { id: '', title: '', page: '', menu: false, icon: '', back: 0 });
-  // A row opens the App in this page with DSM's AppLaunch, as one full-screen App
+  // A row opens the App in this page with DSM's AppLaunch, as one full-screen App. The tap shows the App's
+  // icon in a turning arc and its name at once; DSM builds the App after that has been drawn
   e.rows()[1].handlers.click();
+  const cover = e.cover();
+  assert.equal(cover.attrs.role, 'progressbar'); assert.equal(cover.attrs['aria-label'], 'Log');
+  const orbit = cover.children[0];
+  assert.deepEqual(orbit.children.map((n: any) => n.className || n.tagName), ['spl-fit-opening-arc', 'IMG']);
+  assert.equal(orbit.children[1].src, 'https://nas.example.com:5001/webman/3rdparty/Cams/images/SYNO.Cams.Log.png?v=1');
+  assert.equal(cover.children[1].textContent, 'Log');
+  assert.deepEqual(e.launched, [], 'not before the cover has been drawn');
+  e.d.p.advance(20);
   assert.deepEqual(e.launched, ['SYNO.Cams.Log']);
+  // However long DSM takes, the cover stays: no time limit; back would cancel it (one step)
+  e.d.p.advance(60000);
+  assert.equal(e.cover(), cover); assert.equal(e.d.steps, 1);
   const log = e.open('SYNO.Cams.Log', 'Log');
+  // The window is up: the cover fades out, then goes
+  assert.ok(cover.classList.has('spl-fit-opening-out'));
+  e.d.p.advance(200);
+  assert.equal(e.cover(), undefined); assert.equal(cover.removed, true);
   assert.ok(log.classes.has('spl-single-app')); assert.deepEqual(log.size, [393, 800]);
   assert.equal(e.list().hidden, true);
   assert.equal(e.d.apps().at(-1).title, 'Log'); assert.equal(e.d.steps, 1);
@@ -2877,6 +2950,7 @@ test('embedded desktop: a desktop drawn without components (Surveillance Station
   assert.equal(e.rows()[0].children.find((n: any) => n.tagName === 'IMG').src, 'https://nas.example.com:5001/webman/3rdparty/Cams/modules/Camera/images/2x/Camera_256.png?v=1');
   assert.equal(e.rows()[1].children.some((n: any) => n.tagName === 'IMG'), false, 'no image from another origin');
   e.rows()[0].handlers.click();
+  e.d.p.advance(20);
   assert.deepEqual(e.launched, ['SYNO.Cams.Camera']);
 });
 
@@ -2889,6 +2963,72 @@ test('embedded desktop: when its Apps can\'t be read, the desktop shows as it is
   assert.equal(e.list(), undefined);
   e.d.changed(); e.d.p.advance(1000);
   assert.equal(e.d.p.ctx.document.body.classList.has('spl-fit-desk'), false, 'and stays that way');
+});
+
+test('embedded desktop: a Vue 3 App window (Surveillance Station 9\'s Event Center) ends the opening like any App', () => {
+  const e = embeddedDesk();
+  (e.d.sds.WindowMgr as any).windowList = e.d.windowList;
+  e.d.changed();
+  e.rows()[0].handlers.click();
+  e.d.p.advance(20);
+  const win = e.d.vueWindow({ title: 'Cameras', id: 'SYNO.Cams.Camera', vue3: true });
+  assert.equal(win._isVue, undefined);
+  // Its framework tells the page nothing: the cover looks again while it is up
+  e.d.p.advance(400);
+  assert.ok(!e.cover() || e.cover().classList.has('spl-fit-opening-out'), 'the window is the App: the cover fades');
+  assert.ok(win.$el.classList.has('spl-single-app'));
+  assert.equal(e.list().hidden, true);
+  assert.equal(e.d.apps().at(-1).id, 'SYNO.Cams.Camera');
+});
+
+test('embedded desktop: a window still under DSM\'s loading mask shows after a moment, the mask being the feedback', () => {
+  const e = embeddedDesk();
+  e.d.changed();
+  e.rows()[0].handlers.click();
+  e.d.p.advance(20);
+  const mask = el({ offsetWidth: 80, offsetHeight: 20 });
+  const make = e.d.extWindow;
+  e.d.extWindow = (o: any) => { const w = make(o); w.el.dom.querySelectorAll = (q: string) => /mask/.test(q) ? [mask] : []; return w; };
+  e.open('SYNO.Cams.Camera', 'Cameras');
+  e.d.p.advance(300);
+  assert.ok(e.cover() && !e.cover().classList.has('spl-fit-opening-out'), 'held while DSM builds it');
+  e.d.p.advance(1600);
+  assert.ok(!e.cover() || e.cover().classList.has('spl-fit-opening-out'), 'then DSM\'s own mask shows');
+});
+
+test('embedded desktop: back while an App opens cancels it, and its window is closed when it comes', () => {
+  const e = embeddedDesk();
+  e.d.changed();
+  e.rows()[0].handlers.click();
+  e.d.p.advance(100);
+  assert.deepEqual(e.launched, ['SYNO.Cams.Camera']);
+  assert.equal(e.d.steps, 1, 'the shell\'s back comes to the page');
+  assert.equal(e.d.back(), true);
+  assert.equal(e.cover(), undefined, 'the cover goes at once');
+  assert.equal(e.list().hidden, false);
+  assert.equal(e.d.steps, 0);
+  // DSM finishes the cancelled App later: its window is closed, the list stays
+  const late = e.open('SYNO.Cams.Camera', 'Cameras');
+  assert.equal(late.closed, 1);
+  assert.equal(e.list().hidden, false);
+  // Opened again, it opens normally
+  e.rows()[0].handlers.click();
+  e.d.p.advance(20);
+  const again = e.open('SYNO.Cams.Camera', 'Cameras');
+  assert.equal(again.closed ?? 0, 0);
+  assert.ok(again.classes.has('spl-single-app'));
+});
+
+test('embedded desktop: the opening cover follows reduced motion and keeps every rule scoped', () => {
+  const e = embeddedDesk();
+  e.d.p.ctx.matchMedia = (q: string) => ({ matches: q === '(prefers-reduced-motion: reduce)' });
+  e.d.changed();
+  e.rows()[0].handlers.click();
+  assert.ok(e.cover().classList.has('spl-fit-opening-still'));
+  const css = readFileSync('src/core/webview/mobile-fit/dsm-fit.css', 'utf8');
+  // The arc colours two edges of a transparent ring: no grey track
+  assert.match(css, /\.spl-fit-opening-arc \{[^}]*border: 3px solid transparent; border-top-color: #1d6fe8; border-right-color: #1d6fe8;/);
+  assert.match(css, /\.spl-fit-opening-still \.spl-fit-opening-arc \{ animation: none; transition: none; \}/);
 });
 
 test('embedded desktop: a desktop helper (a tour window) is out of sight and no App; dialogs over the list close on back', () => {
@@ -2945,4 +3085,75 @@ test('the shell takes a report of the page\'s own App (no id or title): it keeps
   assert.deepEqual(fitApp({ id: '', title: '', page: '', menu: false, back: 0 }), { id: '', title: '', page: '', menu: false, back: 0 });
   assert.equal(fitApp({ id: '', title: '' }), undefined, 'nothing reported');
   assert.equal(fitApp(null), undefined);
+});
+
+/**
+ * A welcome dialog laid out for a desktop at 360 px: it fits the screen, but its picture and
+ * its text sit side by side, the text past the dialog's right edge. A pager pinned near its
+ * bottom and a close button pinned at its top.
+ */
+function welcomeDialog() {
+  const picture = node('div', { cls: 'picture', box: { left: 16, top: 40, width: 326, height: 300 } });
+  const title = node('div', { cls: 'title', box: { left: 342, top: 60, width: 300, height: 28 }, text: 'Welcome' });
+  const words = node('div', { cls: 'words', box: { left: 342, top: 220, width: 300, height: 100 }, text: 'What the App does' });
+  const column = node('div', { cls: 'column', box: { left: 342, top: 40, width: 300, height: 300 } }, [title, words]);
+  const row = node('div', { cls: 'row', box: { left: 16, top: 40, width: 328, height: 300 }, cs: { display: 'flex', flexDirection: 'row' } }, [picture, column]);
+  const body = node('div', { cls: 'body', box: { left: 16, top: 40, width: 328, height: 300 } }, [row]);
+  const pager = node('div', { cls: 'pager', box: { left: 342, top: 300, width: 90, height: 24 }, cs: { position: 'absolute' } }, [node('span', { box: { left: 372, top: 305, width: 30, height: 14 }, text: '1 / 2' })]);
+  const close = node('div', { cls: 'close', box: { left: 600, top: 60, width: 24, height: 24 }, cs: { position: 'absolute' } });
+  const dialog = node('div', { cls: 'dialog', box: { left: 16, top: 40, width: 328, height: 300 }, cs: { position: 'absolute' } }, [body, pager, close]);
+  const mask = node('div', { cls: 'tutorial-mask', box: { left: 0, top: 0, width: 393, height: 800 }, cs: { position: 'fixed' } }, [dialog]);
+  return { mask, dialog, body, row, column, words, pager, close };
+}
+function showDialog(mask: FakeNode) {
+  const page = contentPage([]);
+  page.body.appendChild(mask);
+  page.d.p.ctx.document.querySelectorAll = (sel: string) => page.body.querySelectorAll(sel);
+  page.d.changed(); page.d.p.advance(400);
+  return page;
+}
+
+test('dialog wrap: a dialog that fits the screen but whose row runs past its edge becomes a flowing sheet; the row wraps', () => {
+  const w = welcomeDialog();
+  showDialog(w.mask);
+  assert.ok(w.dialog.cls.has('spl-fit-sheet'), 'a sheet');
+  assert.ok(w.dialog.cls.has('spl-fit-sheet-flow'), 'its content flows');
+  assert.ok(w.row.cls.has('spl-fit-wrap'), 'the row that runs past the edge wraps');
+  // Every box from the row up to the dialog lets the content grow; the dialog itself scrolls
+  assert.ok(w.row.cls.has('spl-fit-sheet-chain') && w.body.cls.has('spl-fit-sheet-chain'));
+  assert.equal(w.dialog.cls.has('spl-fit-sheet-chain'), false);
+  assert.equal(w.column.cls.has('spl-fit-wrap'), false, 'only the row with two boxes or more');
+  const css = fitCss();
+  assert.match(css, /\.spl-fit-sheet-flow \.spl-fit-sheet-chain \{ height: auto !important; max-height: none !important; overflow: visible !important; max-width: 100% !important; min-width: 0 !important; \}/);
+  assert.match(css, /\.spl-fit-sheet-flow \.spl-fit-wrap > \* \{ max-width: 100% !important; min-width: 0 !important; flex-shrink: 1 !important; \}/);
+});
+
+test('dialog wrap: the row stays wrapped after the first content pass (not a repair a new width undoes)', () => {
+  const w = welcomeDialog();
+  const page = showDialog(w.mask);
+  page.d.changed(); page.d.p.advance(1000);
+  assert.ok(w.row.cls.has('spl-fit-wrap'));
+  assert.ok(w.dialog.cls.has('spl-fit-sheet-flow'));
+});
+
+test('dialog wrap: a small box pinned over the lower half that the flowed text runs under joins the flow; one at the top stays', () => {
+  const w = welcomeDialog();
+  showDialog(w.mask);
+  assert.ok(w.pager.cls.has('spl-fit-sheet-static'), 'the pager over the last line of text');
+  assert.equal(w.close.cls.has('spl-fit-sheet-static'), false, 'the close button at the top stays pinned');
+  assert.match(fitCss(), /\.spl-fit-sheet-flow \.spl-fit-sheet-static \{ position: static !important;/);
+});
+
+test('dialog wrap: a dialog whose content stays inside it is left as the page drew it', () => {
+  const w = welcomeDialog();
+  w.column.box = { left: 180, top: 40, width: 160, height: 300 };
+  w.words.box = { left: 180, top: 220, width: 160, height: 60 };
+  w.pager.box = { left: 180, top: 300, width: 90, height: 24 };
+  w.close.box = { left: 316, top: 48, width: 24, height: 24 };
+  w.column.kids[0].box = { left: 180, top: 60, width: 160, height: 28 };
+  w.row.kids[0].box = { left: 16, top: 40, width: 160, height: 300 };
+  showDialog(w.mask);
+  assert.equal(w.dialog.cls.has('spl-fit-sheet'), false);
+  assert.equal(w.row.cls.has('spl-fit-wrap'), false);
+  assert.equal(w.pager.cls.has('spl-fit-sheet-static'), false);
 });
