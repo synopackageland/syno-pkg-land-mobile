@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AddressError, NasProber, candidateOrigins, certState, hostName, parseAddress, redirectPorts, serverName, type ProbeResponse } from '../src/core/profiles/probe.ts';
+import { AddressError, NasProber, candidateOrigins, certState, commonName, formatFingerprint, hostName, mainCause, needsTrust, parseAddress, redirectPorts, serverName, type ProbeResponse } from '../src/core/profiles/probe.ts';
 
 const dsm = JSON.stringify({ success: true, data: { 'SYNO.API.Auth': { path: 'entry.cgi', minVersion: 1, maxVersion: 7 } } });
 const trusted = { sha256: 'a'.repeat(64), trusted: true, chainTrusted: true, hostnameMatch: true, expired: false };
@@ -96,6 +96,50 @@ test('slow probes have no deadline; cancel closes them and ignores late answers'
   release({ status: 200, body: dsm, tls: trusted }); await settle();
   assert.equal(p.state.best, undefined);
   assert.equal(p.state.candidates.find(c => c.origin === 'https://nas.example.com:5001')?.state, 'cancelled');
+});
+
+test('an IP whose HTTPS certificate is for another name settles on HTTPS that needs the user’s trust', async () => {
+  const otherName = { ...trusted, trusted: false, hostnameMatch: false, subject: 'CN=nas.example.com', issuer: 'C=US,O=Example CA,CN=R1', notAfter: Date.UTC(2027, 0, 24) };
+  const { p } = prober({
+    [`https://192.168.1.20:5001${info}`]: { status: 200, body: dsm, tls: otherName },
+    [`http://192.168.1.20:5000${info}`]: { status: 200, body: dsm },
+    [`https://192.168.1.20${info}`]: { status: 403, body: '', tls: otherName },
+    [`http://192.168.1.20${info}`]: { status: 403, body: '' },
+  });
+  p.start('192.168.1.20'); await settle(); await settle();
+  assert.equal(p.state.settled, true);
+  assert.equal(p.state.best, 'https://192.168.1.20:5001');
+  const best = p.state.candidates.find(c => c.origin === p.state.best)!;
+  const state = certState(best.origin, best.tls);
+  assert.equal(state, 'mismatch');
+  assert.equal(needsTrust(state), true);
+  assert.equal(mainCause(p.state), undefined);
+});
+
+test('an expired certificate loses to plain HTTP, which can still connect', async () => {
+  const { p } = prober({
+    [`https://192.168.1.21:5001${info}`]: { status: 200, body: dsm, tls: { ...selfSigned, expired: true } },
+    [`http://192.168.1.21:5000${info}`]: { status: 200, body: dsm },
+  });
+  p.start('192.168.1.21'); await settle(); await settle();
+  assert.equal(p.state.best, 'http://192.168.1.21:5000');
+  assert.equal(needsTrust('expired'), false);
+});
+
+test('failures name their cause instead of a generic not found', async () => {
+  const notDsm = prober({ [`https://192.168.1.22:5001${info}`]: { status: 404, body: 'nginx' } });
+  notDsm.p.start('192.168.1.22:5001'); await settle(); await settle();
+  assert.equal(mainCause(notDsm.p.state), 'other');
+  const tls = prober({ [`https://192.168.1.23:5001${info}`]: { error: 'tls' }, [`http://192.168.1.23:5000${info}`]: { error: 'refused' } });
+  tls.p.start('https://192.168.1.23:5001'); await settle(); await settle();
+  assert.equal(mainCause(tls.p.state), 'certificate');
+});
+
+test('certificate details read like DSM shows them', () => {
+  assert.equal(formatFingerprint('9c428f'), '9C:42:8F');
+  assert.equal(commonName('CN=nas.example.com,O=Example'), 'nas.example.com');
+  assert.equal(commonName('C=US,O=Example\\, Inc.,CN=R1'), 'R1');
+  assert.equal(commonName('O=No CN'), undefined);
 });
 
 test('invalid input reports a code without probing', () => {

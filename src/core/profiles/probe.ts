@@ -96,6 +96,16 @@ export function certState(origin: string, tls: ProbeTls | null | undefined, pinn
   return tls.chainTrusted && !tls.hostnameMatch ? 'mismatch' : 'untrusted';
 }
 
+/** Whether the user must review this leaf before the address can be saved */
+export const needsTrust = (state: CertState) => state === 'untrusted' || state === 'mismatch' || state === 'changed';
+/** AA:BB:… in upper case, as DSM shows it */
+export const formatFingerprint = (sha256: string) => sha256.replace(/(..)(?=.)/g, '$1:').toUpperCase();
+/** CN of an X.500 name such as "CN=nas.example.com,O=Synology" */
+export function commonName(dn: string | undefined): string | undefined {
+  const match = /(?:^|,)\s*CN=((?:\\,|[^,])+)/i.exec(dn || '');
+  return match ? match[1].replace(/\\,/g, ',').trim() : undefined;
+}
+
 export type CandidateState = 'pending' | 'dsm' | 'other' | 'failed' | 'cancelled';
 /** qc: an address QuickConnect reported, with the portal's preference (lower is better) */
 export type Candidate = { origin: string; state: CandidateState; typed: boolean; cause?: string; status?: number; tls?: ProbeTls | null; qc?: { kind: QcKind; order: number } };
@@ -120,7 +130,8 @@ export function rank(candidate: Candidate, address?: ParsedAddress): number {
   const tls = candidate.tls;
   const verified = Boolean(tls?.trusted && !tls.expired);
   if (candidate.qc) return 100 - (https && !verified && candidate.qc.order < RELAY_ORDER ? candidate.qc.order + 9.5 : candidate.qc.order);
-  let score = https ? (verified ? 40 : 30) : 10;
+  // An expired certificate cannot be trusted at all (pins still check validity), so plain HTTP wins
+  let score = https ? (verified ? 40 : tls?.expired ? 5 : 30) : 10;
   const port = Number(new URL(candidate.origin).port) || (https ? 443 : 80);
   if (address?.port && port === address.port) score += 5;
   if (address?.scheme && candidate.origin.startsWith(`${address.scheme}:`)) score += 2;

@@ -14,7 +14,7 @@ export type FindResult =
    * trust (self-signed, or issued for a name while the address is an IP), which it refuses
    * silently in the background until the user opens and accepts that page once
    */
-  | { kind: 'unreachable'; origin?: string }
+  | { kind: 'unreachable'; origin?: string; certificate?: boolean }
   | { kind: 'invalid'; code: string };
 export type RemoteNas = {
   /** This page's own origin */

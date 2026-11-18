@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addLink, decodeFragment, encodeFragment, launcherOn, launcherPages, linkOf, mergeLinks, prune, readLinks, removeLink, setReach, withLauncher, withoutFragment, withSelf, TOMBSTONE_MS, type NasLink } from '../src/core/profiles/nas-links.ts';
+import { addLink, decodeFragment, encodeFragment, launcherOn, launcherPages, linkOf, mergeLinks, prune, readLinks, removeLink, setReach, withLauncher, withoutFragment, withSelf, quickFailure, TOMBSTONE_MS, type NasLink } from '../src/core/profiles/nas-links.ts';
 import { candidateOrigins, parseAddress } from '../src/core/profiles/probe.ts';
 
 const path = '/webman/3rdparty/SynoPkgConnect/m/index.html';
@@ -106,4 +106,9 @@ test('a NAS without a launcher stays DSM-only through storage, a switch and a me
   assert.deepEqual(withLauncher([link('e.example', 11)], 'https://e.example', 50), [link('e.example', 11)], 'a NAS that already has a launcher is unchanged');
   // This page's own NAS always has a launcher
   assert.equal(withSelf([dsm], { origin: dsm.origin, name: 'D', launcher: dsm.launcher }, now)[0].dsm, undefined);
+});
+
+test('a browser that gives up at once points at the certificate; a wait points at the network', () => {
+  assert.equal(quickFailure(40), true);
+  assert.equal(quickFailure(8000), false);
 });

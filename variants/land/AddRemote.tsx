@@ -72,9 +72,10 @@ export function AddRemote({ visible, remote, onAdded, onClose }: Props) {
         <PrimaryButton title={t.addToList} icon="add" onPress={() => add(result.origin, launcherOf(result.origin), { dsm: true })} />
       </View> : null}
       {result?.kind === 'unreachable' ? <View style={{ gap: spacing.sm }}>
-        <Banner tone="warning" icon="cloud-off" title={fill(t.unreachableHost, { host: result.origin ? hostOf(result.origin) : host })} detail={result.origin ? t.unreachableDetail : undefined} />
+        {result.certificate && result.origin ? <Banner tone="warning" icon="gpp-maybe" title={fill(t.webCertTitle, { host: hostOf(result.origin) })} detail={t.webCertDetail} />
+          : <Banner tone="warning" icon="cloud-off" title={fill(t.unreachableHost, { host: result.origin ? hostOf(result.origin) : host })} detail={result.origin ? t.webTimeoutDetail : undefined} />}
         {result.origin ? <>
-          <PrimaryButton title={t.openDsm} icon="open-in-new" onPress={() => openDsm(result.origin!)} />
+          <PrimaryButton title={fill(t.openInTab, { origin: result.origin })} icon="open-in-new" onPress={() => openDsm(result.origin!)} />
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' }}>
             <TextButton title={t.retry} icon="refresh" onPress={() => void find()} />
             <TextButton title={t.addAnyway} tone="neutral" onPress={() => add(result.origin!, launcherOf(result.origin!), { dsm: true, unanswered: true })} />

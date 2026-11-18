@@ -174,3 +174,11 @@ export function launcherPages(origins: string[], path: string, pageProtocol: str
 }
 /** A short host for display: the host, with the port when it is not the scheme's default */
 export const hostOf = (origin: string) => new URL(origin).host;
+
+
+/**
+ * A refused certificate or port fails within a moment; a NAS off this network leaves the request
+ * waiting. The browser hides which it was, so only the speed tells a likely certificate problem
+ */
+export const QUICK_FAILURE_MS = 3000;
+export const quickFailure = (ms: number) => ms < QUICK_FAILURE_MS;
