@@ -386,7 +386,8 @@ past its own edge wraps that row and scrolls (`sheets()`); a small box pinned ov
 lower half that the text then runs under joins the flow after it. A card header whose
 short title or switch of buttons breaks onto a second line wraps, title above the switch;
 cards of a wrapped row that each take a line fill it, and one that centred its content over
-its desktop height keeps that height (`wrappedCards()`). A page-sized box that hides
+its desktop height takes its content's height with a top padding like its other sides
+(`wrappedCards()`). A page-sized box that hides
 overflow scrolls once its content runs past its bottom (`clippedPages()`). A Vue toolbar's
 buttons take what they need and its search and filter fields share the rest. DSM Vue's
 label/value cards drop an "undefined:" label (a column with no title) and a label whose

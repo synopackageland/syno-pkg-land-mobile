@@ -242,9 +242,11 @@ html.spl-fit:not(#spl-fit-id) .spl-fit-under { visibility: hidden !important; }
 /* Squeezed layouts (dsm-fit.js repair()): only the script adds these classes, in single-App mode.
    A flex row whose items ran past its edge wraps */
 html.spl-fit:not(#spl-fit-id) .spl-fit-wrap { flex-wrap: wrap !important; row-gap: 8px; }
-/* Cards of a wrapped row, each on a line of its own: each fills it; one that spread its content over its desktop height keeps it */
+/* Cards of a wrapped row, each on a line of its own: each fills it; one that spread its content over its desktop height
+   takes its content's height with a top padding like its other sides, and the part that grew keeps a gap below it */
 html.spl-fit:not(#spl-fit-id) .spl-fit-wrap-fill > * { flex: 1 1 100% !important; width: auto !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
-html.spl-fit:not(#spl-fit-id) .spl-fit-tall { min-height: var(--spl-fit-tall, 0px) !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-pad { padding-top: var(--spl-fit-pad, 12px) !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-gap { margin-bottom: 12px !important; }
 /* A page box that hid its content running past its bottom (dsm-fit.js clippedPages()) scrolls */
 html.spl-fit:not(#spl-fit-id) .spl-fit-page-scroll { overflow-y: auto !important; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; scrollbar-width: none; }
 /* (A scroll bar that takes room would narrow the page under the charts the App sized to it) */

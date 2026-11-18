@@ -2513,25 +2513,28 @@ test('flex rows: a card header that breaks its title over two lines, or its swit
 function dashboardRow() {
   const row = node('div', { cls: 'row', box: { left: 20, top: 16, width: 350, height: 228 }, cs: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' } });
   const wrapped = () => row.cls.has('spl-fit-wrap');
-  // The status card spreads its icon over its height with a part that grows; its desktop height is the row's
+  // The status card spreads its icon over its height with a part that grows, and has no top padding of its own
   const status = node('div', { box: { left: 45, top: 17, width: 300, height: 52 }, cs: { display: 'flex', flexGrow: '1' } }, [node('div', { box: { left: 113, top: 17, width: 232, height: 28 }, text: 'Healthy' })]);
   const rows = node('div', { box: { left: 45, top: 69, width: 300, height: 71 }, cs: { flexGrow: '0' }, text: '6 containers are running' });
-  const info = node('div', { box: { left: 20, top: 16, width: 350, height: 228 }, cs: { display: 'flex', flexDirection: 'column' } }, [status, rows]);
+  const info = node('div', { box: { left: 20, top: 16, width: 350, height: 228 }, cs: { display: 'flex', flexDirection: 'column', paddingTop: '0px', paddingBottom: '24px', paddingLeft: '24px', paddingRight: '24px' } }, [status, rows]);
   const image = node('div', { box: { left: 386, top: 16, width: 320, height: 228 }, text: '15 images' });
   Object.defineProperty(info, 'box', { get: () => wrapped() ? { left: 20, top: 16, width: 350, height: 149 } : { left: 20, top: 16, width: 350, height: 228 } });
   Object.defineProperty(image, 'box', { get: () => wrapped() ? { left: 20, top: 173, width: 320, height: 221 } : { left: 386, top: 16, width: 320, height: 228 } });
   row.appendChild(info); row.appendChild(image);
-  return { row, info, image };
+  return { row, info, image, status, rows };
 }
 
-test('flex rows: cards of a wrapped row each fill their line, and a card that spread its content over its height keeps it', () => {
-  const { row, info, image } = dashboardRow();
+test('flex rows: cards of a wrapped row each fill their line, and a card that spread its content over its height gets a top padding', () => {
+  const { row, info, image, status, rows } = dashboardRow();
   contentPage([row]);
   assert.ok(row.cls.has('spl-fit-wrap'));
   assert.ok(row.cls.has('spl-fit-wrap-fill'), 'each card on a line of its own fills it');
-  assert.ok(info.cls.has('spl-fit-tall'));
-  assert.equal(info.vars['--spl-fit-tall'], '228px', 'its desktop height');
-  assert.ok(!image.cls.has('spl-fit-tall'), 'a block card that is its content\'s height: as it is');
+  // Its content's height (no desktop min-height), a top padding like its sides, a gap under the part that grew
+  assert.ok(info.cls.has('spl-fit-pad'));
+  assert.equal(info.vars['--spl-fit-pad'], '24px');
+  assert.ok(status.cls.has('spl-fit-gap'));
+  assert.ok(!rows.cls.has('spl-fit-gap'), 'only the part that grew');
+  assert.ok(!image.cls.has('spl-fit-pad'), 'a block card that is its content\'s height: as it is');
   // Small items that wrapped (a legend) keep their own widths
   const legend = legendRow();
   contentPage([legend]);
@@ -2539,7 +2542,9 @@ test('flex rows: cards of a wrapped row each fill their line, and a card that sp
   assert.ok(!legend.cls.has('spl-fit-wrap-fill'));
   const css = fitCss();
   assert.match(css, /\.spl-fit-wrap-fill > \* \{ flex: 1 1 100% !important; width: auto !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; \}/);
-  assert.match(css, /\.spl-fit-tall \{ min-height: var\(--spl-fit-tall, 0px\) !important; \}/);
+  assert.match(css, /\.spl-fit-pad \{ padding-top: var\(--spl-fit-pad, 12px\) !important; \}/);
+  assert.match(css, /\.spl-fit-gap \{ margin-bottom: 12px !important; \}/);
+  assert.doesNotMatch(css, /min-height: var\(--spl-fit-tall/, 'no desktop height kept');
 });
 
 test('clipped pages: a page-sized box that hides its content running past its bottom scrolls, and the page in it grows', () => {

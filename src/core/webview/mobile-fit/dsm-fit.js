@@ -2711,7 +2711,7 @@
   var repairs = [];
   var keep = function (el, cls) { repairs.push({ el: el, cls: cls }); };
   // The variable a repair's class reads its size from
-  var REPAIR_VAR = { 'spl-fit-cap': ['--spl-fit-cap'], 'spl-fit-tall': ['--spl-fit-tall'], 'spl-fit-grow': ['--spl-fit-min'], 'spl-fit-rows-row': ['--spl-fit-row', '--spl-fit-zoom'] };
+  var REPAIR_VAR = { 'spl-fit-cap': ['--spl-fit-cap'], 'spl-fit-pad': ['--spl-fit-pad'], 'spl-fit-grow': ['--spl-fit-min'], 'spl-fit-rows-row': ['--spl-fit-row', '--spl-fit-zoom'] };
   var drop = function (r) { r.el.classList.remove(r.cls); (REPAIR_VAR[r.cls] || []).forEach(function (v) { r.el.style.removeProperty(v); }); };
   var undoRepairs = function () {
     repairs.forEach(drop);
@@ -2937,9 +2937,12 @@
   // A dashboard's row of cards that wrapped, so each card takes a line of its own:
   //  - each card fills its line, though the App set it a desktop width (320 px of 350);
   //  - a card that spread its content over its desktop height (a status icon centred by
-  //    a part of the card that grows) keeps that height, or its icon comes up against its
-  //    top edge. A card is a box at least WRAP_CARD_W of the row wide and WRAP_CARD_H high
-  var WRAP_CARD_W = 0.6, WRAP_CARD_H = 60;
+  //    a part of the card that grows, the card with no top padding of its own) takes its
+  //    content's height instead, which brings its icon up against its top edge. It gets a
+  //    top padding like its other sides (CARD_PAD_MIN to CARD_PAD_MAX px), and the part that
+  //    grew keeps a gap (CARD_GAP px) from what follows it.
+  //  A card is a box at least WRAP_CARD_W of the row wide and WRAP_CARD_H high
+  var WRAP_CARD_W = 0.6, WRAP_CARD_H = 60, CARD_PAD_MIN = 12, CARD_PAD_MAX = 24, CARD_GAP = 12;
   var wrappedCards = function (e, kids, before) {
     var rects = kids.map(function (c) { return c.getBoundingClientRect(); }), inner = e.clientWidth;
     var alone = rects.every(function (r, i) { return rects.every(function (o, j) { return i === j || Math.min(r.bottom, o.bottom) - Math.max(r.top, o.top) <= 2; }); });
@@ -2949,10 +2952,14 @@
     kids.forEach(function (c, i) {
       var cs = getComputedStyle(c);
       if (!/flex/.test(cs.display) || !/^column/.test(cs.flexDirection) || c.getBoundingClientRect().height >= before[i] - 8) return;
-      var grows = flowKids(c).some(function (k) { return (parseFloat(getComputedStyle(k).flexGrow) || 0) > 0; });
-      if (!grows) return;
-      c.style.setProperty('--spl-fit-tall', Math.round(before[i]) + 'px');
-      c.classList.add('spl-fit-tall'); keep(c, 'spl-fit-tall');
+      var parts = flowKids(c), grew = parts.filter(function (k) { return (parseFloat(getComputedStyle(k).flexGrow) || 0) > 0; })[0];
+      if (!grew) return;
+      var pad = Math.min(CARD_PAD_MAX, Math.max(CARD_PAD_MIN, px(cs.paddingBottom), px(cs.paddingLeft), px(cs.paddingRight)));
+      if (px(cs.paddingTop) < pad) {
+        c.style.setProperty('--spl-fit-pad', Math.round(pad) + 'px');
+        c.classList.add('spl-fit-pad'); keep(c, 'spl-fit-pad');
+      }
+      if (grew !== parts[parts.length - 1]) { grew.classList.add('spl-fit-gap'); keep(grew, 'spl-fit-gap'); }
     });
   };
   var wrapRows = function (root) {
