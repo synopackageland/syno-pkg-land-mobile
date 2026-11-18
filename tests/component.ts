@@ -78,6 +78,8 @@ export function component(path: string, dependencies: Record<string, unknown>, g
         if (!node.props) return;
         walk(node.props.children);
         // A tab Stack holds its root and pushed pages outside children
+        // A TextField holds its trailing buttons outside children
+        if (node.type === 'TextField') walk(node.props.trailing);
         if (node.type === 'Stack') { walk(node.props.root); (node.props.pages || []).forEach((page: { node: unknown }) => walk(page.node)); }
       };
       walk(tree); return found;

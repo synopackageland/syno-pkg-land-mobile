@@ -6,7 +6,7 @@ import type { NasProfile } from '../../src/core/config';
 import type { DiscoveredApp } from '../../src/core/discovery/schema';
 import type { LauncherState } from '../../src/core/launcher/model';
 import { fill, strings } from '../../src/core/i18n/strings';
-import { BarContent, EmptyState, IconButton, Skeleton, TextButton, TopBar, useBarInsets, useBlurTarget, useCollapsingBar, type BlurTarget } from './ui';
+import { BarContent, EmptyState, IconButton, Skeleton, TextButton, TopBar, noWebOutline, useBarInsets, useBlurTarget, useCollapsingBar, type BlurTarget } from './ui';
 import { colors, layout, radius, spacing, type } from './theme';
 import { Gate, NasTitle, Notices, failedOf } from './TabParts';
 import { PullRefresh } from './PullRefresh';
@@ -109,7 +109,7 @@ export function AppsTab({ state, profile, busy, notice, shareWaiting, onAdd, onS
       initialNumToRender={6} windowSize={7} /></BarContent>
     {searching ? <TopBar blurTarget={target} fill left={<IconButton icon="arrow-back" label={t.back} onPress={closeSearch} />}
       title={<TextInput value={query} onChangeText={setQuery} autoFocus placeholder={`${t.searchApps} · ${fill(t.appCount, { count: apps.length })}`} placeholderTextColor={colors.tertiary} accessibilityLabel={t.searchApps}
-        style={[type.input, { flex: 1, minHeight: layout.hit, paddingVertical: 0 }]} autoCorrect={false} returnKeyType="search" />}
+        style={[type.input, { flex: 1, minHeight: layout.hit, paddingVertical: 0 }, noWebOutline]} autoCorrect={false} returnKeyType="search" />}
       right={query ? <IconButton icon="cancel" label={t.clearSearch} color={colors.tertiary} onPress={() => setQuery('')} /> : null} />
       : <TopBar blurTarget={target} hidden={hidden} title={<NasTitle state={state} profile={profile} fallback={t.apps} />} onTitlePress={profile ? onSwitch : undefined} titleLabel={t.switchNas}
         right={ready ? <IconButton icon="search" label={t.searchApps} onPress={startSearch} /> : null} />}

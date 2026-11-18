@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import type { FindResult, RemoteNas } from '../../src/core/profiles/remote';
 import { hostOf } from '../../src/core/profiles/nas-links';
 import { fill, strings } from '../../src/core/i18n/strings';
-import { Banner, IconButton, PrimaryButton, Sheet, TextButton } from './ui';
+import { Banner, IconButton, PrimaryButton, Sheet, TextButton, TextField } from './ui';
 import { colors, layout, radius, spacing, type } from './theme';
 
 type Props = { visible: boolean; remote: RemoteNas; onAdded(origin: string): void; onClose(): void };
@@ -53,11 +53,9 @@ export function AddRemote({ visible, remote, onAdded, onClose }: Props) {
   return <Sheet visible={visible} onClose={onClose} label={t.close}>
     <View style={{ paddingHorizontal: layout.gutter, paddingBottom: spacing.sm, gap: spacing.md }}>
       <Text style={type.title} accessibilityRole="header">{t.addTitle}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', borderRadius: radius.md, backgroundColor: colors.grouped }}>
-        <TextInput accessibilityLabel={t.address} value={input} onChangeText={change} onSubmitEditing={() => void find()} autoFocus autoCapitalize="none" autoCorrect={false}
-          keyboardType="url" returnKeyType="go" placeholder={t.webAddressPlaceholder} placeholderTextColor={colors.tertiary} style={[type.input, { flex: 1, minHeight: 48, paddingHorizontal: spacing.md }]} />
-        {input ? <IconButton icon="cancel" label={t.clearAddress} color={colors.tertiary} onPress={() => change('')} /> : null}
-      </View>
+      <TextField accessibilityLabel={t.address} value={input} onChangeText={change} onSubmitEditing={() => void find()} autoFocus autoCapitalize="none" autoCorrect={false}
+        keyboardType="url" returnKeyType="go" placeholder={t.webAddressPlaceholder}
+        trailing={input ? <IconButton icon="cancel" label={t.clearAddress} color={colors.tertiary} onPress={() => change('')} /> : null} />
       <Text style={type.caption}>{t.webAddressHint}</Text>
       {busy ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: layout.hit }} accessibilityLiveRegion="polite">
         <ActivityIndicator color={colors.accent} />

@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode, type RefObject } from 'react';
-import { ActivityIndicator, Animated, LayoutAnimation, Modal, PanResponder, Platform, Pressable, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode, type Ref, type RefObject } from 'react';
+import { ActivityIndicator, Animated, LayoutAnimation, Modal, PanResponder, Platform, Pressable, StyleSheet, Text, TextInput, View, type NativeScrollEvent, type NativeSyntheticEvent, type StyleProp, type TextStyle, type ViewProps, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { BlurTargetView, BlurView } from 'expo-blur';
@@ -122,6 +122,30 @@ export function TextButton({ title, onPress, icon, tone = 'accent', disabled, al
     {icon ? <Icon name={icon} size={20} color={color} /> : null}
     <Text style={[type.headline, { color }]}>{title}</Text>
   </Pressable>;
+}
+
+/**
+ * The browser's own focus ring on a bare text input; fields that draw their own focus state drop it.
+ * Browsers draw `outline-style: auto` at any width, so only `none` removes it; React Native's types
+ * list only the native outline styles, and react-native-web passes this one through as CSS.
+ */
+export const noWebOutline = Platform.OS === 'web' ? { outlineStyle: 'none' } as unknown as TextStyle : null;
+type TextFieldProps = Omit<ComponentProps<typeof TextInput>, 'style'> & { icon?: IconName; trailing?: ReactNode; invalid?: boolean; inputRef?: Ref<ComponentRef<typeof TextInput>> };
+/**
+ * Every boxed text field: rounded grouped surface, optional leading icon and trailing buttons.
+ * Focus colours the whole box (never the inner input, which would frame only the text), so the
+ * keyboard focus state stays visible in the App and the browser alike. Spacing is fixed here:
+ * 12px to the icon, 12px from icon to text, 12px after the text unless a trailing button follows.
+ */
+export function TextField({ icon, trailing, invalid, inputRef, onFocus, onBlur, ...input }: TextFieldProps) {
+  const [focused, setFocused] = useState(false);
+  return <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, paddingLeft: spacing.md, gap: spacing.md, borderRadius: radius.md, backgroundColor: colors.grouped, borderWidth: 2, borderColor: invalid ? colors.danger : focused ? colors.accent : 'transparent' }}>
+    {icon ? <Icon name={icon} size={20} color={focused ? colors.accent : colors.secondary} /> : null}
+    <TextInput ref={inputRef} placeholderTextColor={colors.tertiary} underlineColorAndroid="transparent" {...input}
+      onFocus={event => { setFocused(true); onFocus?.(event); }} onBlur={event => { setFocused(false); onBlur?.(event); }}
+      style={[type.input, { flex: 1, minWidth: 0, minHeight: 44, paddingVertical: 0, paddingHorizontal: 0, paddingRight: trailing ? 0 : spacing.md }, noWebOutline]} />
+    {trailing ? <View style={{ flexDirection: 'row', alignItems: 'center' }}>{trailing}</View> : null}
+  </View>;
 }
 
 export function PrimaryButton({ title, onPress, disabled, busy, tone = 'accent', icon }: { title: string; onPress(): void; disabled?: boolean; busy?: boolean; tone?: 'accent' | 'danger'; icon?: IconName }) {
