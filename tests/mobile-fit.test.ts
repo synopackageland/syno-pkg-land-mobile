@@ -3086,3 +3086,74 @@ test('the shell takes a report of the page\'s own App (no id or title): it keeps
   assert.equal(fitApp({ id: '', title: '' }), undefined, 'nothing reported');
   assert.equal(fitApp(null), undefined);
 });
+
+/**
+ * A welcome dialog laid out for a desktop at 360 px: it fits the screen, but its picture and
+ * its text sit side by side, the text past the dialog's right edge. A pager pinned near its
+ * bottom and a close button pinned at its top.
+ */
+function welcomeDialog() {
+  const picture = node('div', { cls: 'picture', box: { left: 16, top: 40, width: 326, height: 300 } });
+  const title = node('div', { cls: 'title', box: { left: 342, top: 60, width: 300, height: 28 }, text: 'Welcome' });
+  const words = node('div', { cls: 'words', box: { left: 342, top: 220, width: 300, height: 100 }, text: 'What the App does' });
+  const column = node('div', { cls: 'column', box: { left: 342, top: 40, width: 300, height: 300 } }, [title, words]);
+  const row = node('div', { cls: 'row', box: { left: 16, top: 40, width: 328, height: 300 }, cs: { display: 'flex', flexDirection: 'row' } }, [picture, column]);
+  const body = node('div', { cls: 'body', box: { left: 16, top: 40, width: 328, height: 300 } }, [row]);
+  const pager = node('div', { cls: 'pager', box: { left: 342, top: 300, width: 90, height: 24 }, cs: { position: 'absolute' } }, [node('span', { box: { left: 372, top: 305, width: 30, height: 14 }, text: '1 / 2' })]);
+  const close = node('div', { cls: 'close', box: { left: 600, top: 60, width: 24, height: 24 }, cs: { position: 'absolute' } });
+  const dialog = node('div', { cls: 'dialog', box: { left: 16, top: 40, width: 328, height: 300 }, cs: { position: 'absolute' } }, [body, pager, close]);
+  const mask = node('div', { cls: 'tutorial-mask', box: { left: 0, top: 0, width: 393, height: 800 }, cs: { position: 'fixed' } }, [dialog]);
+  return { mask, dialog, body, row, column, words, pager, close };
+}
+function showDialog(mask: FakeNode) {
+  const page = contentPage([]);
+  page.body.appendChild(mask);
+  page.d.p.ctx.document.querySelectorAll = (sel: string) => page.body.querySelectorAll(sel);
+  page.d.changed(); page.d.p.advance(400);
+  return page;
+}
+
+test('dialog wrap: a dialog that fits the screen but whose row runs past its edge becomes a flowing sheet; the row wraps', () => {
+  const w = welcomeDialog();
+  showDialog(w.mask);
+  assert.ok(w.dialog.cls.has('spl-fit-sheet'), 'a sheet');
+  assert.ok(w.dialog.cls.has('spl-fit-sheet-flow'), 'its content flows');
+  assert.ok(w.row.cls.has('spl-fit-wrap'), 'the row that runs past the edge wraps');
+  // Every box from the row up to the dialog lets the content grow; the dialog itself scrolls
+  assert.ok(w.row.cls.has('spl-fit-sheet-chain') && w.body.cls.has('spl-fit-sheet-chain'));
+  assert.equal(w.dialog.cls.has('spl-fit-sheet-chain'), false);
+  assert.equal(w.column.cls.has('spl-fit-wrap'), false, 'only the row with two boxes or more');
+  const css = fitCss();
+  assert.match(css, /\.spl-fit-sheet-flow \.spl-fit-sheet-chain \{ height: auto !important; max-height: none !important; overflow: visible !important; max-width: 100% !important; min-width: 0 !important; \}/);
+  assert.match(css, /\.spl-fit-sheet-flow \.spl-fit-wrap > \* \{ max-width: 100% !important; min-width: 0 !important; flex-shrink: 1 !important; \}/);
+});
+
+test('dialog wrap: the row stays wrapped after the first content pass (not a repair a new width undoes)', () => {
+  const w = welcomeDialog();
+  const page = showDialog(w.mask);
+  page.d.changed(); page.d.p.advance(1000);
+  assert.ok(w.row.cls.has('spl-fit-wrap'));
+  assert.ok(w.dialog.cls.has('spl-fit-sheet-flow'));
+});
+
+test('dialog wrap: a small box pinned over the lower half that the flowed text runs under joins the flow; one at the top stays', () => {
+  const w = welcomeDialog();
+  showDialog(w.mask);
+  assert.ok(w.pager.cls.has('spl-fit-sheet-static'), 'the pager over the last line of text');
+  assert.equal(w.close.cls.has('spl-fit-sheet-static'), false, 'the close button at the top stays pinned');
+  assert.match(fitCss(), /\.spl-fit-sheet-flow \.spl-fit-sheet-static \{ position: static !important;/);
+});
+
+test('dialog wrap: a dialog whose content stays inside it is left as the page drew it', () => {
+  const w = welcomeDialog();
+  w.column.box = { left: 180, top: 40, width: 160, height: 300 };
+  w.words.box = { left: 180, top: 220, width: 160, height: 60 };
+  w.pager.box = { left: 180, top: 300, width: 90, height: 24 };
+  w.close.box = { left: 316, top: 48, width: 24, height: 24 };
+  w.column.kids[0].box = { left: 180, top: 60, width: 160, height: 28 };
+  w.row.kids[0].box = { left: 16, top: 40, width: 160, height: 300 };
+  showDialog(w.mask);
+  assert.equal(w.dialog.cls.has('spl-fit-sheet'), false);
+  assert.equal(w.row.cls.has('spl-fit-wrap'), false);
+  assert.equal(w.pager.cls.has('spl-fit-sheet-static'), false);
+});

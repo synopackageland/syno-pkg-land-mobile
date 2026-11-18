@@ -147,6 +147,15 @@
   }
   html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary > :not(.item-icon):not(.item-toggle) * { max-width: 100%; white-space: normal !important; overflow-wrap: anywhere; }
   html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary .item-title { display: block; white-space: normal; overflow-wrap: anywhere; }
+  /* A summary laid out as a table: its cells share the narrow column the icon leaves. A
+     cell's narrowest width is its longest word, and with `anywhere` that is one letter, so a
+     cell sized for a desktop column beside it leaves a time or a name breaking letter by
+     letter. Each cell takes its own line, start-aligned; a word breaks only when longer than the line */
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary tr,
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary td,
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary th { display: flow-root !important; float: none !important; width: auto !important; max-width: 100%; height: auto !important; padding-left: 0 !important; padding-right: 0 !important; text-align: start !important; }
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary td, html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary td *,
+  html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary th, html.spl-fit:not(#spl-fit-id) .syno-ux-expandable-listview .item-summary th * { overflow-wrap: break-word !important; }
 
   /* Label/value cards (DSM Vue's table on a phone, .mobile-row-card-wrapper): the vertical
      variant puts each label over its value at a fixed height. On a phone label and value
@@ -205,6 +214,8 @@ html.spl-fit:not(#spl-fit-id) .spl-fit-sheet-pad .body { height: auto !important
 /* A sheet whose row ran past its edge: the boxes around that row grow to their content, the sheet scrolls */
 html.spl-fit:not(#spl-fit-id) .spl-fit-sheet-flow .spl-fit-sheet-chain { height: auto !important; max-height: none !important; overflow: visible !important; max-width: 100% !important; min-width: 0 !important; }
 html.spl-fit:not(#spl-fit-id) .spl-fit-sheet-flow .spl-fit-wrap > * { max-width: 100% !important; min-width: 0 !important; flex-shrink: 1 !important; }
+/* A control the dialog pinned near its bottom (a pager) that the flowed text now runs under: placed in the flow after it */
+html.spl-fit:not(#spl-fit-id) .spl-fit-sheet-flow .spl-fit-sheet-static { position: static !important; inset: auto !important; transform: none !important; margin-top: 8px !important; }
 html.spl-fit.spl-fit-modal:not(#spl-fit-id) .module-list-layout.layout-module-list-panel,
 html.spl-fit.spl-fit-modal:not(#spl-fit-id) .spl-fit-nav-side { visibility: hidden !important; pointer-events: none !important; }
 html.spl-fit:not(#spl-fit-id) .spl-fit-sheet img, html.spl-fit:not(#spl-fit-id) .spl-fit-sheet video { max-width: 100% !important; height: auto !important; }

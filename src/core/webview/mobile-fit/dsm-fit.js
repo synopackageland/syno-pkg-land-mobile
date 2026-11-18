@@ -1816,6 +1816,8 @@
   /** The App asked for has its window up: done once DSM's own loading mask is gone */
   var openingShown = function (app) {
     if (!opening) return;
+    // Its panes fold under the cover: the cover fades onto the phone layout, not the desktop one
+    step(function () { var root = dom(app); if (root && narrow()) foldPanes(root); });
     if (!busy(app)) { endOpening(); return; }
     var mine = opening;
     if (!mine.masked) mine.masked = setTimeout(function () { if (opening === mine) endOpening(); }, OPEN_MASK_WAIT);
@@ -1994,6 +1996,29 @@
     }
     return null;
   };
+  /** Small boxes the sheet pins over its lower half (a pager at the bottom of a welcome page)
+   * that the flowed text now runs under: they leave the overlay for the flow, after the text */
+  var PINNED_MAX = 80;
+  var unpin = function (el) {
+    var sr = el.getBoundingClientRect(), all = el.querySelectorAll('*'), pinned = [], texts = [];
+    for (var i = 0; i < all.length && i < 400; i++) {
+      var e = all[i];
+      if (!e.offsetWidth || e.closest(LEAF_SKIP)) continue;
+      var pos = getComputedStyle(e).position;
+      if (pos === 'absolute') {
+        var r = e.getBoundingClientRect();
+        if (!e.classList.contains('spl-fit-sheet-static') && r.height <= PINNED_MAX && r.top > sr.top + sr.height / 2) pinned.push({ e: e, r: r });
+      } else if (!e.firstElementChild && /\S/.test(e.textContent || '')) texts.push(e);
+    }
+    pinned.forEach(function (p) {
+      var under = texts.some(function (t) {
+        if (p.e.contains(t) || t.closest('.spl-fit-sheet-static')) return false;
+        var tr = t.getBoundingClientRect();
+        return tr.bottom > p.r.top + 1 && tr.top < p.r.bottom - 1 && tr.right > p.r.left + 1 && tr.left < p.r.right - 1;
+      });
+      if (under) p.e.classList.add('spl-fit-sheet-static');
+    });
+  };
   var sheets = function (list) {
     if (!narrow()) return;
     var vw = window.innerWidth, vh = window.innerHeight, boxes = floating(list);
@@ -2013,6 +2038,7 @@
         spill.classList.add('spl-fit-wrap');
         for (var a = spill; a && a !== el; a = a.parentElement) a.classList.add('spl-fit-sheet-chain');
       }
+      if (el.classList.contains('spl-fit-sheet-flow')) unpin(el);
       // Centered in what it is placed in; a tall one starts at the top gutter and scrolls inside
       var room = el.offsetParent ? el.offsetParent.clientHeight : vh;
       var top = Math.max(16, Math.round((Math.min(room, vh) - el.offsetHeight) / 2)) + 'px';
@@ -2813,8 +2839,8 @@
     }, true);
   };
   var foldPanes = function (root) {
-    var vw = window.innerWidth, vh = window.innerHeight, all = root.querySelectorAll('div, section, main, aside');
-    for (var i = 0; i < all.length && i < CAP; i++) {
+    var vw = window.innerWidth, vh = window.innerHeight, all = [root].concat(Array.prototype.slice.call(root.querySelectorAll('div, section, main, aside'), 0, CAP));
+    for (var i = 0; i < all.length; i++) {
       var row = all[i];
       if (row.classList.contains('spl-fit-panes') || row.offsetWidth < vw * 0.85 || row.offsetHeight < vh * 0.5 || row.closest(LEAF_SKIP) || row.classList.contains('spl-fit-nav-row') || row.closest('.spl-fit-nav-side')) continue;
       var cs = getComputedStyle(row);
@@ -2883,6 +2909,9 @@
         if (e.nodeType === 1 && e.isConnected && !ours(e)) nodes.push(e);
       }
     }
+    // A pane row the App just drew folds before it is painted: the side-by-side layout never shows
+    var vw = window.innerWidth, vh = window.innerHeight;
+    nodes.forEach(function (n) { if (n.offsetWidth >= vw * 0.85 && n.offsetHeight >= vh * 0.5) step(function () { foldPanes(n); }); });
     nodes.forEach(function (n) { step(function () { wrapOne(n); }); });
     var left = ADDED_INSIDE;
     nodes.forEach(function (n) {

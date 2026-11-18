@@ -380,8 +380,10 @@ A side region of a border layout that crushes the content on a phone stacks
 with it (`stackSides()`) and folds to a bar with its label, which opens on a
 tap. Panes laid out side by side with flex boxes do the same (`foldPanes()`): a
 row taller than half the screen whose fixed panes leave the growing pane under
-60% of it becomes a column, each fixed pane a bar. A dialog whose content runs
-past its own edge wraps that row and scrolls (`sheets()`). Every CSS rule is scoped to
+60% of it becomes a column, each fixed pane a bar. Panes fold before they are
+painted: under the opening cover, and as the page adds them. A dialog whose content runs
+past its own edge wraps that row and scrolls (`sheets()`); a small box pinned over its
+lower half that the text then runs under joins the flow after it. Every CSS rule is scoped to
 `html.spl-fit`, and all but the package page's list to below 600px.
 Edit `dsm-fit.js` or `dsm-fit.css`, then run
 `node scripts/gen-mobile-fit.mjs`; `tests/mobile-fit.test.ts` fails when
