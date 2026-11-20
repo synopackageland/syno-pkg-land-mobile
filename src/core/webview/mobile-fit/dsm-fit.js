@@ -1819,12 +1819,37 @@
     var text = JSON.stringify(state);
     if (text !== last) { last = text; post({ internal: 'fitApp', app: state }); }
   };
+  /**
+   * A full-page App (Photos, Chat…) draws into the standalone desktop itself, with no DSM App window.
+   * It is ready once DSM has taken its startup mask off the desktop and the page shows something
+   * (text, an image or a control), outside a loading mask. Until then the page looks again shortly:
+   * what the App draws inside its own tree is not seen by the window watchers.
+   */
+  var pageTimer = null;
+  /** This page's App draws its own page: DSM's config says it is not an App window ("standalone") */
+  var fullPage = function () {
+    try { var e = launchApp && standalone() && SYNO.SDS.Config.FnMap[launchApp]; return !!(e && e.config && e.config.type === 'standalone'); } catch (x) { return false; }
+  };
+  var pageDrawn = function (root) {
+    var desk = document.getElementById('sds-desktop');
+    if (!root || (desk && /(^|\s)sds-window-init-loading(\s|$)/.test(desk.className))) return false;
+    var masks = root.querySelectorAll('.ext-el-mask-msg, .x-mask-loading, .x-standalone-loading');
+    for (var i = 0; i < masks.length; i++) if (masks[i].offsetWidth) return false;
+    if ((root.innerText || '').trim()) return true;
+    var marks = root.querySelectorAll('img, svg, canvas, video, input, button');
+    for (var j = 0; j < marks.length; j++) if (marks[j].offsetWidth) return true;
+    return false;
+  };
   /** An App's own page: the shell keeps the launched App's name and icon; the page adds its menu */
   var reportPage = function (list) {
     var root = pageRoot(), nav = foundNav(root);
     watchContent(root);
-    if (!nav) return;
-    var state = { id: String(launchApp || ''), title: '', page: nav.page(), menu: true, icon: '', back: stack(list).length };
+    clearTimeout(pageTimer); pageTimer = null;
+    if (!nav && !(fullPage() && pageDrawn(root))) {
+      if (fullPage()) pageTimer = setTimeout(schedule, 150);
+      return;
+    }
+    var state = { id: String(launchApp || ''), title: '', page: nav ? nav.page() : '', menu: !!nav, icon: '', back: stack(list).length };
     var text = JSON.stringify(state);
     if (text !== last) { last = text; post({ internal: 'fitApp', app: state }); }
   };
@@ -2086,6 +2111,9 @@
     var S = window.SYNO && SYNO.SDS;
     id = String(id || '');
     if (!id || !S || typeof S.AppLaunch !== 'function' || !S.Config || !S.Config.FnMap || !S.Config.FnMap[id]) return false;
+    // DSM opens a standalone or URL App only in a page of its own: it never shows here
+    var type = (S.Config.FnMap[id].config || {}).type;
+    if (type === 'standalone' || type === 'url' || type === 'legacy') return false;
     home();
     hostedId = id; launchedAt = Date.now();
     hostBefore = windows();
@@ -3943,5 +3971,16 @@
     window.addEventListener('load', stopInit);
     // (A desktop DSM builds after its init is there once the page has loaded)
     if (deskPage) window.addEventListener('load', function () { setTimeout(startSingle, 0); });
+  }
+  // A full-page App on DSM's newer framework (Photos) loads no Ext, so single-App mode never
+  // starts there: report its page once DSM has unmasked it and it has drawn, as reportPage does
+  if (launchApp) {
+    var pageStart = Date.now();
+    var pageWatch = function () {
+      if (window.Ext || singleOn || Date.now() - pageStart > 60000) return;
+      if (fullPage() && pageDrawn(pageRoot())) { post({ internal: 'fitApp', app: { id: String(launchApp), title: '', page: '', menu: false, icon: '', back: 0 } }); return; }
+      setTimeout(pageWatch, 150);
+    };
+    setTimeout(pageWatch, 150);
   }
 })();
