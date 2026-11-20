@@ -291,7 +291,7 @@ function overview(state: Record<string, unknown>, extra: Record<string, unknown>
     '../../src/core/i18n/strings': i18n, './ui': uiStub, './theme': themeStub, './TabParts': tabParts,
     './HomeCards': { NasLine: 'NasLine', OfflineLine: 'OfflineLine', ResourceCard: 'ResourceCard', ageOf: () => undefined },
     './Glance': { AttentionBlock: 'AttentionBlock', StorageSection: 'StorageSection', BackupSection: 'BackupSection' },
-    './InstallHint': { InstallHint: 'InstallHint' }, './config': { landConfig: { name: 'Package Land' } },
+    './InstallHint': { InstallHint: 'InstallHint' }, './LanSwitch': { LanSwitch: 'LanSwitch' }, './config': { landConfig: { name: 'Package Land' } },
   });
   const handlers = Object.fromEntries(['onAdd', 'onScan', 'onSignIn', 'onRefresh', 'onSwitch', 'onDetails', 'onDismissNotice', 'onStatus', 'onStorage', 'onAccount'].map(name => [name, () => calls.push(name)]));
   page.render('Overview', { state: { ...launcherBase, ...state }, profile, busy: false, shareWaiting: false, now: 0, language: 'en', ...handlers, ...extra });
@@ -307,6 +307,16 @@ test('overview: the browser\'s Add to Home Screen card sits in the scrolled cont
     const scroll = o.page.elements('ScrollView')[0];
     assert.ok(scroll.props.children.some((c: any) => c?.type === 'InstallHint'), 'a child of the scroll view');
   }
+});
+test('overview: the browser\'s switch-to-local-network card sits in the scrolled content before the Home Screen card', () => {
+  const status = { history: {}, read: { before: 0, ids: [] }, refreshing: false, signedOut: false, loadingMore: false, snapshot: { scope: 's', times: {}, denied: [], user: { user: 'alex' } } };
+  const o = overview({ apps: apps(3, true) }, { status, language: 'ja' });
+  const lan = o.page.elements('LanSwitch');
+  assert.equal(lan.length, 1);
+  assert.equal(lan[0].props.locale, 'ja');
+  const children = o.page.elements('ScrollView')[0].props.children as any[];
+  const at = (type: string) => children.findIndex(c => c?.type === type);
+  assert.ok(at('LanSwitch') >= 0 && at('LanSwitch') < at('InstallHint'));
 });
 test('overview: one line, then attention, resources, storage and backup; the bar holds the NAS switcher and the account', () => {
   const status = { history: {}, read: { before: 0, ids: [] }, refreshing: false, signedOut: false, loadingMore: false, snapshot: { scope: 's', times: {}, denied: [], user: { user: 'alex' } } };

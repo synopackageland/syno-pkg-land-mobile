@@ -10,6 +10,7 @@ import { Gate, NasTitle, Notices, failedOf } from './TabParts';
 import { NasLine, OfflineLine, ResourceCard, ageOf } from './HomeCards';
 import { AttentionBlock, BackupSection, StorageSection, type GlancePage, type OpenApp } from './Glance';
 import { InstallHint } from './InstallHint';
+import { LanSwitch } from './LanSwitch';
 import { PullRefresh } from './PullRefresh';
 import { landConfig } from './config';
 
@@ -50,6 +51,7 @@ export function Overview({ state, profile, busy, notice, shareWaiting, status, n
       refreshControl={profile && !state.signIn ? <PullRefresh busy={Boolean(state.refreshing || status?.refreshing)} onRefresh={onRefresh} offset={bars.top} /> : undefined}>
       <Notices notice={notice} shareWaiting={shareWaiting} offline={failed && ready} error={state.error} refreshing={state.refreshing} onDismiss={onDismissNotice} onRetry={onRefresh} />
       {/* Browser build only: in the page's content, so it never covers the NAS status */}
+      <LanSwitch locale={language} />
       <InstallHint name={landConfig.name} locale={language} />
       {ready && profile && status ? <View style={{ gap: layout.block }}>
         {/* The DSM version and one line, then what needs attention, resources, storage and backup (report §2.1) */}
