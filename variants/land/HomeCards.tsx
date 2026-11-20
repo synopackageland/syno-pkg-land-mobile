@@ -8,6 +8,7 @@ import { ageLabel, formatRate, percent, timeLabel, uptimeParts, usedOfTotal } fr
 import type { Volume, VolumeState } from '../../src/core/status/mappers';
 import { statusStrings } from '../../src/core/i18n/status-strings';
 import { readouts } from '../../src/core/status/calm';
+import { dsmLabel, pendingUpdate, releaseShort } from '../../src/core/status/modules/upgrade';
 import { BigStat, CapacityTile, InlineAction, Tile } from './StatusParts';
 import { Icon, Skeleton, type IconName } from './ui';
 import { chart, colors, layout, radius, spacing, type } from './theme';
@@ -97,21 +98,42 @@ export function trendOf(snapshot: StatusSnapshot | undefined, key: LiveKey): Liv
   return continuous(snapshot?.trend, key);
 }
 /**
- * U7. One line instead of the NAS card: model · DSM 7.4.1 · up 11 d. The
- * data age follows only when the values are not live.
+ * U7. The NAS header instead of a card: DSM's version on its own line, with a
+ * tag when DSM offers an update (administrators; tapping it opens Update &
+ * Restore), then one quiet line: model · up 11 d. The data age follows only
+ * when the values are not live. Up to date shows the version alone.
  */
-export function NasLine({ state, t, now, locale }: { state: StatusState; t: Strings; now: number; locale: string }) {
+export function NasLine({ state, t, now, locale, onUpdate }: { state: StatusState; t: Strings; now: number; locale: string; onUpdate?: () => void }) {
   const s = state.snapshot, st = statusStrings(t);
   const user = s?.user, up = liveUptime(s, now);
   // Only the largest unit: a line that ticks every minute reads as noise
   const u = up === undefined ? undefined : uptimeParts(up);
   const uptime = !u ? undefined : u.days ? `${u.days} ${t.unit_day}` : u.hours ? `${u.hours} ${t.unit_hour}` : `${u.minutes} ${t.unit_minute}`;
-  const dsm = user?.dsm ? fill(st.dsmVersion, { version: user.update ? `${user.dsm} Update ${user.update}` : user.dsm }) : undefined;
+  const version = dsmLabel(user);
+  const next = version ? pendingUpdate(s?.upgrade, user) : undefined;
   const age = ageOf(state, ['health'], 'home', now, t, locale);
-  const parts = [modelOf(s), dsm, uptime ? fill(st.upFor, { time: uptime }) : undefined, age].filter(Boolean);
-  if (!parts.length) return null;
-  // A quiet one-line caption with room under the top bar, on the sections' gutter
-  return <Text style={[type.caption, { color: colors.tertiary, paddingHorizontal: layout.gutter, paddingTop: spacing.sm }]} numberOfLines={1} selectable>{parts.join(' · ')}</Text>;
+  const parts = [modelOf(s), uptime ? fill(st.upFor, { time: uptime }) : undefined, age].filter(Boolean);
+  if (!version && !parts.length) return null;
+  // Room under the top bar, on the sections' gutter
+  return <View style={{ paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.xxs }}>
+    {version ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.sm, rowGap: spacing.xs }}>
+      <Text style={[type.headline, { flexShrink: 1 }]} numberOfLines={1} selectable>{version}</Text>
+      {next ? <UpdateTag text={`${st.updateAvailable} · ${releaseShort(next, user)}`} label={fill(st.updateLabel, { current: version, version: next.version })} onPress={onUpdate} /> : null}
+    </View> : null}
+    {parts.length ? <Text style={[type.caption, { color: colors.tertiary }]} numberOfLines={1} selectable>{parts.join(' · ')}</Text> : null}
+  </View>;
+}
+/** A soft accent tag: "Update available · Update 2"; a button when DSM's Update & Restore can open */
+function UpdateTag({ text, label, onPress }: { text: string; label: string; onPress?: () => void }) {
+  const body = <>
+    <Icon name="system-update-alt" size={14} color={colors.accent} />
+    <Text style={[type.caption, { color: colors.accent, fontWeight: '600', flexShrink: 1 }]} numberOfLines={1}>{text}</Text>
+    {onPress ? <Icon name="chevron-right" size={14} color={colors.accent} /> : null}
+  </>;
+  const shape = { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, minHeight: 24, paddingLeft: spacing.sm, paddingRight: onPress ? spacing.xs : spacing.sm, borderRadius: radius.full, flexShrink: 1 } as const;
+  if (!onPress) return <View style={[shape, { backgroundColor: colors.accentSoft }]} accessibilityLabel={label}>{body}</View>;
+  return <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={10}
+    style={({ pressed }) => [shape, { backgroundColor: colors.accentSoft, opacity: pressed ? 0.6 : 1 }]}>{body}</Pressable>;
 }
 /**
  * §5.2 offline: the page keeps its cached values; one line says since when,

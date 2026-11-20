@@ -19,6 +19,7 @@ import { intakeInbox } from '../../src/core/intake/inbox';
 import { cleanupDownloads } from '../../src/core/transfers/download';
 import type { Launch, NasProfile } from '../../src/core/config';
 import { hostedApp, mobileFitOn, warmUrl, type FitApp } from '../../src/core/webview/mobile-fit';
+import { updateApp, updatePageUrl } from '../../src/core/status/modules/upgrade';
 import type { NativeIntakeItem } from '../../src/core/bridge/contract';
 import { NasProber, certState } from '../../src/core/profiles/probe';
 import type { QcPost } from '../../src/core/profiles/quickconnect';
@@ -429,6 +430,9 @@ export function Launcher() {
   };
   /** A DSM App by its launchApp id, for the status modules' "Open in DSM"; undefined when this account has none */
   const openApp = (id: string) => { const app = state.apps.find(a => a.id === id); return app ? () => open(app) : undefined; };
+  /** Control Panel at Update & Restore: its own target, so it never reuses a Control Panel already open on another page */
+  const controlPanel = state.apps.find(a => a.id === updateApp);
+  const openUpdate = controlPanel && profile ? () => open({ ...controlPanel, id: `${controlPanel.id}:update`, url: updatePageUrl(profile.origin), start: undefined }) : undefined;
   /** A native page pushed onto a tab; the tab bar stays below it */
   const page = (next: Route): ReactNode => {
     if (next.kind === 'status') return profile ? <StatusScreen key={profile.id} initialTab={next.tab} profile={profile} state={statusState} t={t} locale={language} now={now} onBack={pop} onRefresh={() => void status.refresh()}
@@ -445,7 +449,7 @@ export function Launcher() {
   const roots: Record<TabKey, ReactNode> = {
     overview: <Overview {...common} blurTarget={overviewTarget} top={tops.overview} status={tabStatus} now={now} language={language}
       onStatus={() => push({ kind: 'status' })} onStorage={() => push({ kind: 'status', tab: 'drives' })} onAccount={() => profile && push({ kind: 'detail', id: profile.id })}
-      onStatusPage={tab => push({ kind: 'status', tab })} onOpenApp={openApp} />,
+      onStatusPage={tab => push({ kind: 'status', tab })} onOpenApp={openApp} onUpdate={openUpdate} />,
     apps: <AppsTab {...common} blurTarget={appsTarget} top={tops.apps} onOpen={app => open(app)} language={language} onArrange={ids => { if (profile) model.setOrder(profile.id, ids); }}
       onPressIn={() => { Native.logOpen('press_started', sequence.current + 1); model.holdList(); }}
       onPressOut={() => { Native.logOpen('press_released', sequence.current + 1); setTimeout(() => model.releaseList(), 0); }} />,

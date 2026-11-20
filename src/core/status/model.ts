@@ -18,10 +18,11 @@ import { LIVE, type LiveSample } from './live.ts';
 import { mapHistory, type HistoryRange, type ResourceHistory } from './modules/history.ts';
 import { modules, type Unavailable } from './modules/index.ts';
 import type { Security } from './modules/security.ts';
+import type { Upgrade } from './modules/upgrade.ts';
 import type { Pool } from './modules/storage.ts';
 import { MAX_NOTICES } from './modules/system.ts';
 
-export type Item = 'util' | 'overview' | 'health' | 'storage' | 'user' | 'notify' | 'lastRead' | 'security' | 'backup' | 'history';
+export type Item = 'util' | 'overview' | 'health' | 'storage' | 'user' | 'upgrade' | 'notify' | 'lastRead' | 'security' | 'backup' | 'history';
 export type Mode = 'off' | 'home' | 'status' | 'notifications';
 type Call = { api: string; version: number; method: string; [key: string]: unknown };
 /** Each item's call at its lowest tested version; the model picks the version DSM offers */
@@ -30,7 +31,8 @@ const second = 1000, minute = 60 * second;
 /** Refresh period of each item per surface; history is read when a range is picked. Utilization feeds the live charts (live.ts) */
 export const periods: Record<Mode, Partial<Record<Item, number>>> = {
   off: {},
-  home: { util: LIVE.period, overview: minute, health: minute, storage: minute, user: 24 * 60 * minute, notify: minute, lastRead: minute, security: 5 * minute, backup: 5 * minute },
+  // DSM answers the update check from its own stored result; an hour keeps the tag current without asking more
+  home: { util: LIVE.period, overview: minute, health: minute, storage: minute, user: 24 * 60 * minute, upgrade: 60 * minute, notify: minute, lastRead: minute, security: 5 * minute, backup: 5 * minute },
   status: { util: LIVE.period, overview: minute, health: 30 * second, storage: minute, user: 24 * 60 * minute, security: 5 * minute, backup: 5 * minute },
   notifications: { notify: minute, lastRead: minute, user: 24 * 60 * minute },
 };
@@ -45,7 +47,7 @@ const NO_API = 102;
 export type TrendPoint = LiveSample;
 export type StatusSnapshot = {
   scope: string; util?: Utilization; overview?: Overview; health?: Health; volumes?: Volume[]; user?: UserInfo; notices?: Notifications; lastRead?: number;
-  pools?: Pool[]; security?: Security; backups?: Backups; history?: ResourceHistory; trend?: TrendPoint[];
+  pools?: Pool[]; security?: Security; upgrade?: Upgrade; backups?: Backups; history?: ResourceHistory; trend?: TrendPoint[];
   /** When each item last answered, epoch ms */
   times: Partial<Record<Item, number>>;
   /** Hidden: DSM refused the account, or the API is absent (e.g. a package not installed) */
