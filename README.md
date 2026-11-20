@@ -252,8 +252,9 @@ App icon with one arc in the App color turning around it (no track), and the
 App name. With the system "remove animations" setting the arc stays still. It
 appears on the first frame, since a DSM App never paints sooner, and fades out
 over 220 ms when content is ready.
-After 8 s it adds "Still opening" with Reopen and Back; a slow App is never
-judged failed by time alone.
+After 8 s it adds "Still opening" and Back as a hint: the App keeps opening
+and shows itself once drawn, so there is no Reopen, which would only start a slow
+App again. A slow App is never judged failed by time alone.
 A failed main-frame navigation offers Reopen and Back, and stale content
 messages cannot dismiss a failed or replaced attempt. No App-specific portal
 paths are used.
