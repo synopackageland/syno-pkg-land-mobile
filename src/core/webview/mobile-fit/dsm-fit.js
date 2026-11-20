@@ -2671,6 +2671,8 @@
   // a stylesheet height with its line-height the same (one line of text): its
   // text wraps onto a second line, drawn over the cell under it on the next
   // line, or over what follows the row when the cell is on its last line.
+  // And to a block of text set one line tall (a title with height and
+  // line-height 30 px) whose text wraps to two lines over the text under it.
   var grown = [];
   var ungrow = function (e) { e.classList.remove('spl-fit-grow'); e.style.removeProperty('--spl-fit-min'); };
   var inFlowBox = function (n) { return n.offsetHeight && !/absolute|fixed/.test(getComputedStyle(n).position); };
@@ -2718,7 +2720,9 @@
         var cr = c.getBoundingClientRect();
         top = Math.min(top, cr.top - px(s.marginTop)); bottom = Math.max(bottom, cr.bottom + px(s.marginBottom));
       }
-      var inline = /^inline-/.test(cs.display), lines = inline ? textBottom(e) : -Infinity;
+      // Its own lines of text: an inline cell's, or a block's whose stylesheet height is one line
+      // (Security Advisor's baseline title, 30 px for a title that wraps to two on a phone)
+      var inline = /^inline-/.test(cs.display), lines = textBottom(e);
       if (lines > r.bottom + 2) { top = Math.min(top, r.top); bottom = Math.max(bottom, lines); }
       if (bottom - top <= e.clientHeight + 2 || bottom <= r.bottom + 2) continue;
       // Only when what comes next in the flow is drawn over the spilled part

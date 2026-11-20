@@ -1006,6 +1006,33 @@ test('spilled box: Ext-managed sizes, boxes that clip and spills nothing covers 
 });
 
 /**
+ * Security Advisor's Security Baseline at 390 px: its title is a block of text a stylesheet sets
+ * 30 px tall with a 30 px line-height; on a phone it wraps to two lines, the second drawn over
+ * the description under it.
+ */
+function baselineTitle({ below = true } = {}) {
+  const title = node('div', { cls: 'descpanel-title', box: { left: 20, top: 87, width: 350, height: 36 }, text: 'What are you mainly using your DSM for?' });
+  title.naturalHeight = 66; title.textBox = { left: 20, top: 87, width: 350, height: 60 };
+  const desc = node('div', { cls: 'descpanel-desctext', box: { left: 20, top: below ? 123 : 160, width: 350, height: 96 }, text: 'Choose your main purpose for using DSM.' });
+  const panel = node('div', { box: { left: 20, top: 87, width: 350, height: 140 } }, [title, desc]);
+  return { panel, title, desc };
+}
+
+test('spilled text: a one-line block whose text wraps over the text under it grows to its lines', () => {
+  const { panel, title, desc } = baselineTitle();
+  usagePage([panel]);
+  assert.ok(title.cls.has('spl-fit-grow'));
+  assert.equal(title.vars['--spl-fit-min'], '36px', 'never smaller than DSM made it');
+  assert.equal(desc.cls.has('spl-fit-grow'), false);
+});
+
+test('spilled text: a wrapped block with room under it is left alone', () => {
+  const { panel, title } = baselineTitle({ below: false });
+  usagePage([panel]);
+  assert.equal(title.cls.has('spl-fit-grow'), false);
+});
+
+/**
  * A usage table drawn as rows of inline blocks at 390 px (High Availability's overview): three
  * cells a row, each a stylesheet height of 28 px with a 28 px line-height. The label and the
  * values of the second row wrap onto a second line, over the row under it; those of the last
