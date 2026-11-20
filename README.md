@@ -408,7 +408,20 @@ value is empty. A row of a name, a meter and its value that scrolled sideways pu
 and value under the name, and its box grows instead (`meterRows()`). A card grid whose last
 row would be half empty uses fewer columns, and the cards of a short last row share its width;
 a list squeezed under a card grid takes its content's height and the box scrolls instead
-(`fitFlexed()`, `flexedRows()`). Every CSS rule is scoped to
+(`fitFlexed()`, `flexedRows()`). In a card grid of one column, a card is as tall as its
+content (at most the desktop row), and cards are as wide as each other: a desktop margin
+beside a card is dropped, and no room is kept for a scroll bar that floats over the content.
+A card whose content grows later lays its row out again, and a value a card cuts off with an
+ellipsis wraps instead. Text that wraps under a box the App placed at a fixed spot
+(buttons under a status text, Ext's absolutely positioned vbox items) pushes that box down
+(`extSpills()`): the Ext items between them grow by the overlap. A row of floated boxes
+wider than its room (Security Advisor's categories) wraps, its texts taking the width and a
+lone mark staying at the end (`floatRows()`). A framed box whose stylesheet height is
+shorter than its content grows to it, and a body that fills a padded page counts as the
+page for `clippedPages()`. Grids: each column keeps its header or usual value, the widest
+text column takes the rest and wraps; a grid still too wide scrolls sideways as a whole,
+with no column held in place. Cells that wrap use lines of text, not DSM's row-tall line
+height, and keep at least DSM's one-line row height (`lineFit()`). Every CSS rule is scoped to
 `html.spl-fit`, and all but the package page's list to below 600px.
 Edit `dsm-fit.js` or `dsm-fit.css`, then run
 `node scripts/gen-mobile-fit.mjs`; `tests/mobile-fit.test.ts` fails when

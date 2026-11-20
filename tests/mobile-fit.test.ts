@@ -975,6 +975,94 @@ test('oversized content: rows of text, tables, toolbars and fields are never sca
   assert.equal(layer(), undefined);
 });
 
+/** Hyper Backup's task status at 360 px: a vbox item set 88 px tall for one line of text, and the tool buttons Ext placed under it */
+function extStatus() {
+  const d = dsmPage({ width: 360 });
+  class VBoxLayout {} class HBoxLayout {} class BorderLayout {} class FitLayout {}
+  Object.assign((d.ext.full as any).layout, { VBoxLayout, HBoxLayout, BorderLayout, FitLayout });
+  const owner: any = { layout: new VBoxLayout(), rendered: true, layouts: 0, doLayout() { this.layouts++; } };
+  const item: any = { height: 88, ownerCt: owner, getHeight() { return this.height; }, setHeight(h: number) { this.set = h; } };
+  const text = node('div', { box: { left: 114, top: 84, width: 225, height: 80 }, text: 'Last successful backup: 2026-10-11 11:03 Next scheduled backup time: None' });
+  const status = node('div', { box: { left: 114, top: 36, width: 225, height: 88 }, cs: { position: 'absolute' } }, [node('div', { box: { left: 114, top: 36, width: 225, height: 40 }, text: 'Ready to relink' }), text]);
+  const buttons = node('div', { box: { left: 114, top: 124, width: 225, height: 28 }, cs: { position: 'absolute' } }, [node('div', { box: { left: 114, top: 124, width: 90, height: 28 }, attrs: { role: 'button' }, text: 'Relink now' })]);
+  (status as any).id = 'status-item';
+  const cmps: Record<string, unknown> = { 'status-item': item };
+  (d.ext.full as any).getCmp = (id: string) => cmps[id];
+  return { d, owner, item, status, buttons, text };
+}
+
+test('Ext spills: text that wraps past its fixed box pushes the box Ext placed under it down; the App\'s height comes back on a new width', () => {
+  const s = extStatus();
+  const page = contentPageOn(s.d, [node('div', { box: { left: 0, top: 0, width: 360, height: 700 }, cs: { position: 'relative' } }, [s.status, s.buttons])]);
+  // The text ends at 164; the buttons start at 124: the item grows by the 40 px and 8 more, then its vbox lays out again
+  assert.equal(s.item.set, 88 + 48);
+  assert.equal(s.item.flex, 0);
+  assert.ok(s.owner.layouts >= 1);
+  // Turned sideways: DSM's own height
+  Object.assign(page.d.p.ctx, { innerWidth: 800 }); page.d.p.ctx.screen.width = 800;
+  page.d.changed(); page.d.p.advance(400);
+  assert.equal(s.item.height, 88);
+});
+
+/** Security Advisor's category row at 360 px: icon and name, its status text and a mark, floated in a row set for a desktop width */
+function floatRow({ late = false } = {}) {
+  const icon = node('div', { cls: 'bar-icon', box: { left: 57, top: 211, width: 32, height: 32 }, cs: { display: 'table' } });
+  const first = node('div', { box: { left: 41, top: 196, width: 238, height: 52 }, cs: { float: 'left' } }, [icon, node('div', { box: { left: 97, top: 213, width: 170, height: 17 }, text: 'Malware' })]);
+  const desc = node('div', { cls: 'bar-desc', box: { left: 279, top: 196, width: 160, height: 52 }, cs: { whiteSpace: 'nowrap', overflowX: 'hidden' }, text: late ? '' : 'No malware found on your system.' });
+  const second = node('div', { box: { left: 279, top: 196, width: 160, height: 52 }, cs: { float: 'left' } }, [desc]);
+  const mark = node('div', { cls: 'status-icon', box: { left: 257, top: 248, width: 64, height: 52 }, cs: { float: 'right' } }, [node('div', { cls: 'icon-safe', box: { left: 281, top: 262, width: 24, height: 24 } })]);
+  const row = node('div', { box: { left: 41, top: 196, width: 280, height: 104 }, cs: { position: 'relative' } }, [first, second, mark]);
+  return { row, first, second, desc, mark };
+}
+
+test('float rows: a row of floated boxes wider than its room wraps, its texts take the width, a lone mark stays at the end', () => {
+  const r = floatRow();
+  contentPage([node('div', { box: { left: 0, top: 0, width: 360, height: 700 } }, [r.row])], { width: 360 });
+  assert.ok(r.row.cls.has('spl-fit-floatrow'));
+  assert.equal(r.row.vars['--spl-fit-min'], '104px', 'never shorter than DSM made it');
+  assert.equal(r.row.vars['--spl-fit-inset'], '16px', 'a text on a line of its own starts where the name\'s icon does');
+  assert.ok(r.first.cls.has('spl-fit-floatrow-text') && r.second.cls.has('spl-fit-floatrow-text'));
+  assert.ok(!r.mark.cls.has('spl-fit-floatrow-text') && r.mark.cls.has('spl-fit-floatrow-end'), 'the mark is a picture, at the end');
+  const css = readFileSync('src/core/webview/mobile-fit/dsm-fit.css', 'utf8');
+  assert.match(css, /\.spl-fit-floatrow \{\s*display: flex !important; flex-wrap: wrap !important;/);
+  assert.match(css, /\.spl-fit-floatrow-text, html\.spl-fit:not\(#spl-fit-id\) \.spl-fit-floatrow-text \* \{ white-space: normal !important;/);
+});
+
+test('float rows: a row that fits, or boxes in the flow, keep their layout', () => {
+  const fits = floatRow();
+  fits.row.box.width = 600;
+  const flow = floatRow();
+  [flow.first, flow.second, flow.mark].forEach(k => { k.cs.float = 'none'; });
+  contentPage([node('div', { box: { left: 0, top: 0, width: 360, height: 700 } }, [fits.row, flow.row])], { width: 360 });
+  assert.ok(!fits.row.cls.has('spl-fit-floatrow') && !flow.row.cls.has('spl-fit-floatrow'));
+});
+
+test('framed box: a card whose stylesheet height is shorter than its content grows to it; boxes without a frame, or set by Ext, do not', () => {
+  const frame = (cs: Record<string, string>) => {
+    const body = node('div', { box: { left: 22, top: 36, width: 280, height: 608 }, cs: { overflowY: 'hidden' } });
+    const card = node('div', { cls: 'card', box: { left: 21, top: 16, width: 302, height: 465 }, cs: { paddingBottom: '19px', ...cs } }, [body]);
+    card.naturalHeight = 628;
+    return card;
+  };
+  const framed = frame({ backgroundColor: 'rgb(255, 255, 255)' }), bordered = frame({ borderBottomWidth: '1px', borderBottomStyle: 'solid' }), bare = frame({}), ext = frame({ backgroundColor: 'rgb(255, 255, 255)' });
+  ext.style.height = '465px';
+  for (const card of [framed, bordered, bare, ext]) contentPage([node('div', { box: { left: 0, top: 0, width: 360, height: 700 } }, [card])], { width: 360 });
+  // Its body ends at 644, and the card's padding under it: 663 - 16
+  assert.ok(framed.cls.has('spl-fit-grow') && bordered.cls.has('spl-fit-grow'));
+  assert.equal(framed.vars['--spl-fit-min'], '647px');
+  assert.ok(!bare.cls.has('spl-fit-grow') && !ext.cls.has('spl-fit-grow'));
+});
+
+test('clipped page: a body that fills the width inside a page\'s padding is the page, and scrolls what it cuts off', () => {
+  const rows = node('div', { box: { left: 41, top: 196, width: 280, height: 473 } });
+  rows.naturalHeight = 473;
+  const body = node('div', { box: { left: 40, top: 36, width: 280, height: 608 }, cs: { position: 'relative', overflowY: 'hidden' } }, [node('div', { box: { left: 40, top: 36, width: 280, height: 160 } }), rows]);
+  body.naturalHeight = 789;
+  const page = node('div', { box: { left: 0, top: 0, width: 360, height: 680 }, cs: { paddingLeft: '20px', paddingRight: '20px', overflowY: 'hidden' } }, [node('div', { box: { left: 20, top: 16, width: 320, height: 648 }, cs: { paddingLeft: '20px', paddingRight: '20px' } }, [body])]);
+  contentPage([page], { width: 360 });
+  assert.ok(body.cls.has('spl-fit-page-scroll'));
+});
+
 /** Package Center's detail header at 360 px: a stylesheet height of 178 px, and the wrapped title column needs 246 */
 function detailHeader({ inline = false, overflow = 'visible', below = true } = {}) {
   const icon = node('div', { cls: 'icon', box: { left: 40, top: 85, width: 128, height: 128 }, cs: { backgroundImage: 'url("icon.png")' } });
@@ -1537,13 +1625,13 @@ test('the fit script names no App\'s own classes either', () => {
 });
 
 /** Ext 3's box layouts as the fit sees them: a row of four 69 px cards with 10 px spacers between, 154 px high */
-function cardRow({ width = 393, cards = 4, text = 'LUN 3', panel = true } = {}) {
+function cardRow({ width = 393, cards = 4, text = 'LUN 3', panel = true, cardW = 69, icon = false } = {}) {
   const p = page(), ext = fakeExt();
   class BoxLayout { onLayout() {} }
   class HBoxLayout extends BoxLayout {
     calculateChildBoxes(items: any[], size: { width: number; height: number }) {
       let left = 0;
-      const boxes = items.map(c => { const w = c.gap ? 10 : 69, box = { component: c, left, top: 0, width: w, height: size.height }; left += w; return box; });
+      const boxes = items.map(c => { const w = c.gap ? 10 : c.icon ? 92 : cardW, box = { component: c, left, top: 0, width: w, height: size.height }; left += w; return box; });
       return { boxes, meta: { maxHeight: size.height } };
     }
   }
@@ -1552,9 +1640,12 @@ function cardRow({ width = 393, cards = 4, text = 'LUN 3', panel = true } = {}) 
   p.ctx.innerWidth = width; p.ctx.screen.width = width;
   p.ctx.Ext = ext.full;
   p.run(fitJs());
+  // (A status's big icon: a picture and no text)
+  const picture = () => Object.assign(Object.create(ext.core.Panel.prototype), { icon: true, el: { dom: { textContent: '', querySelector: () => ({}), querySelectorAll: () => [{}], classList: classList() } } });
   const classList = () => { const set = new Set<string>(); return { set, toggle: (c: string, on: boolean) => { if (on) set.add(c); else set.delete(c); } }; };
   const item = (gap: boolean) => Object.assign(Object.create((panel || gap ? ext.core.Panel : ext.core.BoxComponent).prototype), { gap, el: { dom: { textContent: gap ? '' : text, querySelector: () => null, querySelectorAll: () => [], classList: classList() } } });
   const items: any[] = [];
+  if (icon) items.push(picture());
   for (let i = 0; i < cards; i++) { if (i) items.push(item(true)); items.push(item(false)); }
   const owner = { layouts: 0, doLayout() { this.layouts++; } };
   const ct: any = {
@@ -1616,7 +1707,7 @@ test('grid row details: a tapped row with cut-off cells gets a details button; i
 type Col = { id: string; head: string; values: string[]; fixed?: boolean; width?: number };
 /** The colours behind a grid: its rows' and header's card, and DSM's tint for each row state */
 type Paint = { row: string; head: string; tints: Record<string, string> };
-function grid(cols: Col[], { width = 360, oneLine = false, screen = 393, paint, scroller }: { width?: number; oneLine?: boolean; screen?: number; paint?: Paint; scroller?: any } = {}) {
+function grid(cols: Col[], { width = 360, oneLine = false, screen = 393, paint, scroller, lines }: { width?: number; oneLine?: boolean; screen?: number; paint?: Paint; scroller?: any; lines?: { cell: string; head: string } } = {}) {
   const p = page(), ext = fakeExt();
   p.ctx.innerWidth = screen; p.ctx.screen.width = screen;
   const styles: any[] = [];
@@ -1630,7 +1721,7 @@ function grid(cols: Col[], { width = 360, oneLine = false, screen = 393, paint, 
     return e;
   };
   const widths = cols.map(c => c.width ?? 100), set: number[][] = [];
-  const cls = new Set<string>();
+  const cls = new Set<string>(), vars: Record<string, string> = {};
   const cm = {
     config: cols.map(c => (c.fixed ? { fixed: true } : {})),
     getColumnCount: () => cols.length, isHidden: () => false, getColumnId: (i: number) => cols[i].id,
@@ -1650,9 +1741,13 @@ function grid(cols: Col[], { width = 360, oneLine = false, screen = 393, paint, 
     p.ctx.getComputedStyle = (n: any) => ({ paddingLeft: '0', paddingRight: '0',
       backgroundColor: n.bg ?? (String(n.className).split(' ').map(c => paint.tints[c]).filter(Boolean).pop() || 'rgba(0, 0, 0, 0)') });
   }
+  if (lines) {
+    // DSM's cells: 13 px text on a line as tall as the row; headers their own
+    p.ctx.getComputedStyle = (n: any) => ({ paddingLeft: '0', paddingRight: '0', paddingTop: '4px', paddingBottom: '4px', fontSize: '13px', lineHeight: n.head ? lines.head : lines.cell });
+  }
   const view: any = {
     cm, mainBody, mainHd, getRows: () => rows, getScrollOffset: () => 0,
-    getHeaderCell: (i: number) => ({ querySelector: () => inner(cols[i].head) }),
+    getHeaderCell: (i: number) => ({ querySelector: () => Object.assign(inner(cols[i].head), { head: true }) }),
     getCell: (r: number, i: number) => ({ querySelector: () => inner(cols[i].values[r] ?? '') }),
     updateAllColumnWidths() {}, syncHeaderScroll() { syncs++; },
     on() {}, fitColumns() { originals++; return 'desktop'; },
@@ -1660,12 +1755,12 @@ function grid(cols: Col[], { width = 360, oneLine = false, screen = 393, paint, 
   if (oneLine) view.rowHeight = 28;
   if (scroller) view.scroller = { dom: scroller };
   view.grid = {
-    el: { dom: { id: 'grid-1', classList: { remove: (c: string) => cls.delete(c), add: (c: string) => cls.add(c), toggle: (c: string, on: boolean) => on ? cls.add(c) : cls.delete(c) } } },
+    el: { dom: { id: 'grid-1', style: { setProperty: (k: string, v: string) => { vars[k] = v; } }, classList: { contains: (c: string) => cls.has(c), remove: (c: string) => cls.delete(c), add: (c: string) => cls.add(c), toggle: (c: string, on: boolean) => on ? cls.add(c) : cls.delete(c) } } },
     getGridEl: () => ({ getWidth: () => width }),
   };
   ext.hooks.GridPanel.beforerender({ getView: () => view });
   // (The fit's own stylesheet goes to <head> too)
-  return { fit: () => view.fitColumns(), widths, cls, get styles() { return styles.filter(n => String(n.id).startsWith('spl-fit-grid-pin-')); }, get originals() { return originals; }, get syncs() { return syncs; } };
+  return { fit: () => view.fitColumns(), widths, cls, vars, get styles() { return styles.filter(n => String(n.id).startsWith('spl-fit-grid-pin-')); }, get originals() { return originals; }, get syncs() { return syncs; } };
 }
 const advisor = (): Col[] => [
   { id: 'status', head: 'Status', values: ['', '', ''].map(() => '!!') },
@@ -1701,7 +1796,7 @@ test('grids on a phone: a short Chinese header keeps its characters together; a 
   const [, size, type, mtime, long] = g.widths;
   // 8 px a character, plus the header's 14 px; no column is under 32 px
   assert.deepEqual([size, type, mtime, long], [32, 32, 4 * 8 + 14, 4 * 8 + 14]);
-  // Too narrow for every header whole: the grid scrolls sideways instead, its first column pinned
+  // Too narrow for every header whole: the grid scrolls sideways instead, as a whole
   const narrow = grid([
     { id: 'name', head: '名稱', values: ['Documents'] },
     { id: 'size', head: '大小', values: [''] },
@@ -1711,10 +1806,10 @@ test('grids on a phone: a short Chinese header keeps its characters together; a 
   narrow.fit();
   assert.deepEqual(narrow.widths.slice(1), [32, 32, 46]);
   assert.ok(narrow.cls.has('spl-fit-hscroll'));
-  assert.match(narrow.styles[0].textContent, /td-name\{position:sticky;left:0px;/);
+  assert.equal(narrow.styles.length, 0, 'no column pinned');
 });
 
-test('grids on a phone: too many columns scroll sideways in the grid with the first column pinned; a check box column takes the next with it', () => {
+test('grids on a phone: too many columns scroll sideways in the grid as a whole, no column pinned; a check box column keeps its width', () => {
   const cols: Col[] = [
     { id: 'name', head: 'Name', values: ['Container Manager', 'Directory Server'] },
     { id: 'version', head: 'Version', values: ['24.0.2-1707', '6.0.1-0098'] },
@@ -1725,38 +1820,47 @@ test('grids on a phone: too many columns scroll sideways in the grid with the fi
   g.fit();
   assert.ok(g.cls.has('spl-fit-hscroll'));
   assert.ok(g.widths.reduce((a, b) => a + b) > 300);
-  assert.match(g.styles[0].textContent, /^html\.spl-fit #grid-1 \.x-grid3-td-name\{position:sticky;left:0px;/);
+  assert.equal(g.styles.length, 0, 'no column stays put');
   const checked = grid([{ id: 'checker', head: '', values: [], fixed: true, width: 24 }, ...cols], { width: 300 });
   checked.fit();
   assert.equal(checked.widths[0], 24, 'the check box column keeps its width');
-  assert.match(checked.styles[0].textContent, /td-checker\{position:sticky;left:0px;.*td-name\{position:sticky;left:24px;/);
+  assert.equal(checked.styles.length, 0);
+  assert.ok(!/sticky/.test(readFileSync('src/core/webview/mobile-fit/dsm-fit.js', 'utf8')), 'nothing in the script pins a column');
 });
 
-test('grids on a phone: pinned cells are solid, in the card\'s colour, with DSM\'s tint for hovered and selected rows, so nothing shows through', () => {
-  const cols: Col[] = [
+test('grids on a phone: while the grid scrolls, the text column gets its usual width, up to the grid\'s width', () => {
+  const g = grid([
     { id: 'date', head: 'Date', values: ['2026-11-17', '2026-11-17'] },
     { id: 'time', head: 'Time', values: ['13:49:07', '13:48:55'] },
+    { id: 'level', head: 'Level', values: ['Info', 'Info'] },
     { id: 'host', head: 'Host name', values: ['nas', 'nas'] },
     { id: 'msg', head: 'Message', values: ['User [admin] from [127.0.0.1] signed in to [DSM] successfully via [password].', 'System started'] },
-  ];
-  const paint = { row: 'rgb(255, 255, 255)', head: 'rgb(248, 249, 250)', tints: { 'x-grid3-row-over': 'rgba(5, 127, 235, 0.04)', 'x-grid3-row-selected': 'rgba(5, 127, 235, 0.1)' } };
-  const g = grid(cols, { width: 200, paint });
+  ], { width: 200 });
   g.fit();
   assert.ok(g.cls.has('spl-fit-hscroll'));
-  const css = g.styles[0].textContent as string;
-  assert.match(css, /#grid-1 \.x-grid3-td-date\{position:sticky;left:0px;z-index:1;/);
-  assert.ok(!css.includes('inherit'), 'never the see-through colour of the row');
-  assert.match(css, /#grid-1 \.x-grid3-row \.x-grid3-td-date\{background-color:rgb\(255, 255, 255\);\}/);
-  assert.match(css, /#grid-1 \.x-grid3-hd-row \.x-grid3-td-date\{background-color:rgb\(248, 249, 250\);z-index:2;\}/);
-  assert.match(css, /\.x-grid3-row-over \.x-grid3-td-date\{background-image:linear-gradient\(rgba\(5, 127, 235, 0\.04\),/);
-  assert.match(css, /\.x-grid3-row-selected \.x-grid3-td-date\{background-image:linear-gradient\(rgba\(5, 127, 235, 0\.1\),/);
-  // Selected comes after hovered, so a selected row under the finger stays selected
-  assert.ok(css.indexOf('row-selected') > css.indexOf('row-over'));
-  assert.ok(!css.includes('row-alt'), 'a state without a tint adds no rule');
-  // Without a solid colour anywhere above, white
-  const bare = grid(cols, { width: 200 });
-  bare.fit();
-  assert.match(bare.styles[0].textContent, /\.x-grid3-row \.x-grid3-td-date\{background-color:#fff;\}/);
+  // The long message wraps once in the grid's width, not into a strip of many lines
+  assert.equal(g.widths[4], 200);
+});
+
+test('grids on a phone: a wrapped line is a line of text, not a row: cells keep their one-line height and a picture cell is no taller', () => {
+  const g = grid(advisor(), { lines: { cell: '28px', head: '30px' } });
+  g.fit();
+  assert.ok(g.cls.has('spl-fit-gridlh') && g.cls.has('spl-fit-gridhlh'));
+  // 13 px × 1.45; half of the 9 px saved above the text; at least the old 28 + 4 + 4
+  assert.deepEqual([g.vars['--spl-fit-cell-lh'], g.vars['--spl-fit-cell-pt'], g.vars['--spl-fit-cell-min']], ['19px', '8px', '36px']);
+  assert.deepEqual([g.vars['--spl-fit-head-lh'], g.vars['--spl-fit-head-pt'], g.vars['--spl-fit-head-min']], ['19px', '9px', '38px']);
+  const css = readFileSync('src/core/webview/mobile-fit/dsm-fit.css', 'utf8');
+  assert.match(css, /\.spl-fit-gridwrap\.spl-fit-gridlh \.x-grid3-cell-inner \{ line-height: var\(--spl-fit-cell-lh\) !important; min-height: var\(--spl-fit-cell-min\) !important; box-sizing: border-box !important; \}/);
+  // The text sits lower only in cells whose content is text: a box of its own (a status icon) keeps its place
+  assert.match(css, /\.x-grid3-cell-inner:not\(:has\(> div\)\):not\(:has\(> img\)\):not\(:has\(> table\)\) \{ padding-top: var\(--spl-fit-cell-pt\) !important; \}/);
+  // Lines already as tall as text: nothing changes
+  const plain = grid(advisor(), { lines: { cell: '18px', head: '18px' } });
+  plain.fit();
+  assert.ok(!plain.cls.has('spl-fit-gridlh') && !plain.cls.has('spl-fit-gridhlh'));
+  // One line per cell (fixed row heights): headers only
+  const fixed = grid(advisor(), { oneLine: true, lines: { cell: '28px', head: '30px' } });
+  fixed.fit();
+  assert.ok(!fixed.cls.has('spl-fit-gridlh') && fixed.cls.has('spl-fit-gridhlh'));
 });
 
 test('grids on a phone: DSM\'s own scroller (fleXcroll) measures the new widths, or a wide grid would not scroll sideways', () => {
@@ -1886,6 +1990,30 @@ test('card rows: a grid never leaves its last row half empty', () => {
   assert.deepEqual(cards(3), [[0, 0, 400], [0, 166, 400], [0, 332, 400]]);
   // Five: one column would cost two rows more; the last card takes its row's width
   assert.deepEqual(cards(5), [[0, 0, 194], [206, 0, 194], [0, 166, 194], [206, 166, 194], [0, 332, 400]]);
+});
+
+test('card rows: in one column a card is as tall as its content, not the desktop row, and cards are as wide as each other', () => {
+  const row = cardRow({ cards: 3 });
+  // Each card: a 34 px frame (header) around a body holding 70 px in the flow, 6 px padding under it
+  row.p.ctx.getComputedStyle = () => ({ position: 'relative', paddingBottom: '6px', borderBottomWidth: '0px', marginBottom: '0px' });
+  const cards = row.items.filter((c: any) => !c.gap);
+  cards.forEach((c: any, i: number) => {
+    c.el.dom.offsetHeight = 154;
+    c.body = { dom: { offsetHeight: 120, children: [{ offsetTop: 10, offsetHeight: i === 2 ? 300 : 60 }] } };
+    c.margins = { top: 0, left: 0, right: 18, bottom: 0 };
+  });
+  const boxes = row.lay(400).boxes.filter((b: any) => !b.component.gap);
+  // (The third holds more than the row: it keeps the row's height)
+  assert.deepEqual(boxes.map((b: any) => [b.top, b.width, b.height]), [[0, 400, 110], [122, 400, 110], [244, 400, 154]]);
+  assert.ok(cards[0].splFitH && !cards[2].splFitH);
+});
+
+test('card rows: an icon beside a card with its room (a status and its text) is no card row', () => {
+  const status = cardRow({ cards: 1, cardW: 220, icon: true }).lay(320);
+  assert.deepEqual(status.boxes.map((b: any) => b.width), [92, 220]);
+  // Beside cards squeezed under a card's width, the icon goes into the grid with them
+  const squeezed = cardRow({ cards: 2, icon: true }).lay(320).boxes.filter((b: any) => !b.component.gap);
+  assert.ok(squeezed.every((b: any) => b.width > 92));
 });
 
 test('card rows: rows of buttons, rows that fit, and wide screens keep the desktop layout', () => {

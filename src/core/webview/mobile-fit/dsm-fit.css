@@ -61,9 +61,13 @@
   html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap .x-grid3-cell-inner { white-space: normal !important; overflow-wrap: break-word; text-overflow: clip !important; }
   html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap .x-grid3-cell-inner:not(:has(div)):not(:has(table)):not(:has(ul)) { display: -webkit-box !important; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden !important; }
   html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap .x-grid3-row, html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap .x-grid3-row td { height: auto !important; }
-  /* Pinned cells get a solid colour from the script (pinColumns): DSM's rows
-     are see-through. DSM's own scroll bar (fleXcroll) floats over the last
-     row: room under the rows keeps it clear. */
+  /* Cells and headers that wrap (dsm-fit.js lineFit()): lines of GRID_LINE, the cell at least as tall as DSM's row; text in the cell itself (not in a box of its own, like a status icon) starts half of the saved line lower, where one line sat */
+  html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap.spl-fit-gridlh .x-grid3-cell-inner { line-height: var(--spl-fit-cell-lh) !important; min-height: var(--spl-fit-cell-min) !important; box-sizing: border-box !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-gridwrap.spl-fit-gridlh .x-grid3-cell-inner:not(:has(> div)):not(:has(> img)):not(:has(> table)) { padding-top: var(--spl-fit-cell-pt) !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-gridhead.spl-fit-gridhlh .x-grid3-hd-inner { line-height: var(--spl-fit-head-lh) !important; min-height: var(--spl-fit-head-min) !important; box-sizing: border-box !important; }
+  html.spl-fit:not(#spl-fit-id) .spl-fit-gridhead.spl-fit-gridhlh .x-grid3-hd-inner:not(:has(> div)):not(:has(> img)):not(:has(> table)) { padding-top: var(--spl-fit-head-pt) !important; }
+  /* DSM's own scroll bar (fleXcroll) floats over the last row of a grid that
+     scrolls sideways: room under the rows keeps it clear. */
   html.spl-fit:not(#spl-fit-id) .spl-fit-hscroll .x-grid3-scroller > .mcontentwrapper > .contentwrapper { padding-bottom: 12px !important; box-sizing: border-box; }
 
   /* Full-screen Ext dialogs: no frame, no drag handles */
@@ -285,6 +289,24 @@ html.spl-fit:not(#spl-fit-id) .spl-fit-stack-flex { flex-wrap: wrap !important; 
 html.spl-fit:not(#spl-fit-id) .spl-fit-stack-flex > * { flex: 1 1 100% !important; max-width: 100% !important; min-width: 0 !important; overflow-wrap: anywhere; }
 html.spl-fit:not(#spl-fit-id) .spl-fit-stack-grid { grid-template-columns: minmax(0, 1fr) !important; }
 html.spl-fit:not(#spl-fit-id) .spl-fit-stack-grid > * { grid-column: auto !important; grid-row: auto !important; overflow-wrap: anywhere; }
+
+/* A row of floated boxes wider than its room (dsm-fit.js floatRows()): a row that wraps, each box
+   its content's width; a box of text takes the rest of its line and wraps; one floated right stays
+   at the end. The row grows to its content and, placed absolutely, joins the flow */
+html.spl-fit:not(#spl-fit-id) .spl-fit-floatrow {
+  display: flex !important; flex-wrap: wrap !important; align-items: center !important; position: relative !important; left: auto !important; top: auto !important;
+  width: auto !important; max-width: 100% !important; height: auto !important; min-height: var(--spl-fit-min, 0px) !important; box-sizing: border-box !important;
+}
+/* (Each box lays its own parts out in a line, centred: a box drawn as a table of cells would not share the row's line) */
+html.spl-fit:not(#spl-fit-id) .spl-fit-floatrow > * { float: none !important; display: flex !important; align-items: center !important; flex: 0 1 auto !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-floatrow > .spl-fit-floatrow-text { flex: 1 1 auto !important; width: auto !important; height: auto !important; }
+/* Its text takes the height of its lines; a picture (an empty box) keeps its size */
+html.spl-fit:not(#spl-fit-id) .spl-fit-floatrow-text :not(:empty) { height: auto !important; max-width: 100% !important; min-width: 0 !important; }
+/* A value a card cut off with an ellipsis wraps inside the card */
+html.spl-fit:not(#spl-fit-id) .spl-fit-unclip { white-space: normal !important; text-overflow: clip !important; overflow: visible !important; height: auto !important; overflow-wrap: anywhere; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-floatrow > .spl-fit-floatrow-text ~ .spl-fit-floatrow-text { padding-left: var(--spl-fit-inset, 0px) !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-floatrow > .spl-fit-floatrow-end { margin-left: auto !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-floatrow-text, html.spl-fit:not(#spl-fit-id) .spl-fit-floatrow-text * { white-space: normal !important; text-overflow: clip !important; overflow-wrap: anywhere; }
 
 /* A main panel padded for a desktop window (dsm-fit.js gutters): phone gutters, the full width */
 html.spl-fit:not(#spl-fit-id) .spl-fit-gutter { padding-left: 12px !important; padding-right: 12px !important; margin-left: 0 !important; margin-right: 0 !important; width: auto !important; min-width: 0 !important; }

@@ -282,8 +282,8 @@
       return;
     }
     // Decide again only when the content changed (more texts once data loads, another page).
-    // Rows crushed at the screen's width wrap first (wrapRows): a row that wraps is no reason to widen
-    if (!box.splNeed) step(function () { wrapRows(box); });
+    // Rows crushed at the screen's width wrap first (wrapRows, floatRows): a row that wraps is no reason to widen
+    if (!box.splNeed) step(function () { wrapRows(box); floatRows(box); });
     var now = clipStats(box), sig = window.innerWidth + '|' + now.leaves + '|' + now.clipped;
     if (box.splSig === sig) return;
     var scroll = scroller.scrollLeft, need = decideWidth(box, at, natural, declared, now);
@@ -305,7 +305,7 @@
       var at = function (w) {
         box.splNeed = h.splNeed = w;
         h.doLayout(false, true);
-        if (!w) step(function () { wrapRows(box); });
+        if (!w) step(function () { wrapRows(box); floatRows(box); });
         if (w) {
           // Its sideways scrollbar takes from the height: lay out again without it
           var cs = getComputedStyle(box), bar = box.offsetHeight - box.clientHeight - px(cs.borderTopWidth) - px(cs.borderBottomWidth);
@@ -334,7 +334,7 @@
     try {
       var at = function (w) {
         box.splNeed = w;
-        if (w) box.style.setProperty('width', w + 'px', 'important'); else { box.style.removeProperty('width'); step(function () { wrapRows(box); }); }
+        if (w) box.style.setProperty('width', w + 'px', 'important'); else { box.style.removeProperty('width'); step(function () { wrapRows(box); floatRows(box); }); }
         return clipStats(box);
       };
       // A width DSM's own re-render dropped: decide again
@@ -716,9 +716,15 @@
   //     (an icon, a short level word, a date) on one line.
   //  2. What is left goes to the widest text column, whose cells wrap to at
   //     most three lines instead of one cut-off line.
-  //  3. When the least widths are still wider than the grid, the grid scrolls
-  //     sideways in its own box with its first column pinned; the page never
-  //     gets wider.
+  //  3. When the least widths are still wider than the grid, the whole grid
+  //     scrolls sideways in its own box (no column stays put); the page never
+  //     gets wider. The text column then gets its usual width, up to the grid's
+  //     width: squeezing it saves no scrolling and only makes every row taller.
+  //  4. A wrapped line takes the height of a line, not of a row: DSM gives the
+  //     cells a line-height as tall as its one-line rows (28 px for 13 px text),
+  //     so three wrapped lines made an 84 px row. Cells that wrap get a line-height
+  //     of GRID_LINE of their font size, half of the rest above the text and a
+  //     least height of DSM's row, so a one-line row keeps DSM's height. Headers on two lines the same.
   // Grids that keep fixed row heights (virtual scrolling) keep one line per
   // cell; their row detail still shows everything (rowSheet below).
   var GRID_SHORT = 140, GRID_TEXT_MIN = 96, GRID_SAMPLE = 40, GRID_PAD = 6, GRID_HEAD_PAD = 14;
@@ -757,55 +763,29 @@
     });
     return Math.ceil(Math.max(longest, textWidth(text, inner) / 2)) + padX(inner) + GRID_HEAD_PAD;
   };
-  var GRID_STYLE = 'spl-fit-grid-pin-';
-  // DSM's grid rows are see-through: their colour comes from the card far
-  // above, and a hovered or selected row only adds a light tint. A pinned
-  // cell slides over the cells next to it, so it needs a solid colour.
-  var solidBehind = function (e) {
-    for (; e && e.nodeType === 1; e = e.parentElement) {
-      var c = getComputedStyle(e).backgroundColor, m = /rgba?\(([^)]*)\)/.exec(c || '');
-      if (!m) continue;
-      var parts = m[1].split(',');
-      if (parts.length < 4 || parseFloat(parts[3]) >= 1) return c;
+  var GRID_LINE = 1.45;
+  /**
+   * A line-height as tall as a row (DSM's 28 px for 13 px text) on cells that wrap: a line of
+   * GRID_LINE of the font size, half of the rest above the text, and the cell at least as tall as before.
+   * Measured on a sample cell; the grid's element carries the sizes (dsm-fit.css)
+   */
+  var lineFit = function (el, sample, cls) {
+    if (!el || !el.style || !el.classList) return;
+    var on = false;
+    if (sample) {
+      var cs = getComputedStyle(sample), size = px(cs.fontSize), line = px(cs.lineHeight);
+      if (size > 0 && line > size * (GRID_LINE + 0.15)) {
+        var lh = Math.round(size * GRID_LINE), half = (line - lh) / 2, kind = cls === 'spl-fit-gridlh' ? 'cell' : 'head';
+        el.style.setProperty('--spl-fit-' + kind + '-lh', lh + 'px');
+        el.style.setProperty('--spl-fit-' + kind + '-pt', (px(cs.paddingTop) + Math.floor(half)) + 'px');
+        // and the cell keeps at least its old height: one line sits where it did, and a cell holding
+        // a picture (a status icon) is no taller than before
+        el.style.setProperty('--spl-fit-' + kind + '-min', Math.round(line + px(cs.paddingTop) + px(cs.paddingBottom)) + 'px');
+        on = true;
+      }
     }
-    return '#fff';
-  };
-  var ROW_STATES = ['x-grid3-row-alt', 'x-grid3-row-over', 'x-grid3-row-selected'];
-  /** The tint DSM's stylesheet gives a row in each state, read from a hidden sample row */
-  var rowTints = function (body) {
-    var tints = {};
-    if (!body || !body.appendChild) return tints;
-    ROW_STATES.forEach(function (state) {
-      var probe = document.createElement('div');
-      probe.className = 'x-grid3-row ' + state;
-      probe.style.cssText = 'position:absolute;visibility:hidden;height:0;';
-      body.appendChild(probe);
-      var c = getComputedStyle(probe).backgroundColor;
-      body.removeChild(probe);
-      if (c && c !== 'transparent' && !/,\s*0\)$/.test(c)) tints[state] = c;
-    });
-    return tints;
-  };
-  var pinColumns = function (view, cols) {
-    var el = view.grid.el.dom, id = el.id, sheet = document.getElementById(GRID_STYLE + id);
-    if (!cols) { if (sheet) sheet.parentNode.removeChild(sheet); return; }
-    if (!sheet) { sheet = document.createElement('style'); sheet.id = GRID_STYLE + id; document.head.appendChild(sheet); }
-    var body = view.mainBody && view.mainBody.dom, head = view.mainHd && view.mainHd.dom;
-    var rowBase = solidBehind(body || el), headBase = solidBehind(head || el), tints = rowTints(body);
-    var css = '', left = 0;
-    cols.forEach(function (c, n) {
-      var td = ' .x-grid3-td-' + String(c.id).replace(/[^\w-]/g, '\\$&'), grid = 'html.spl-fit #' + id;
-      var edge = n === cols.length - 1 ? 'box-shadow:1px 0 0 rgba(0,0,0,.08);' : '';
-      css += grid + td + '{position:sticky;left:' + left + 'px;z-index:1;' + edge + '}';
-      css += grid + ' .x-grid3-row' + td + '{background-color:' + rowBase + ';}';
-      css += grid + ' .x-grid3-hd-row' + td + '{background-color:' + headBase + ';z-index:2;}';
-      // Later states win, as in DSM's own stylesheet: selected over hovered over striped
-      ROW_STATES.forEach(function (state) {
-        if (tints[state]) css += grid + ' .' + state + td + '{background-image:linear-gradient(' + tints[state] + ',' + tints[state] + ');}';
-      });
-      left += c.w;
-    });
-    if (sheet.textContent !== css) sheet.textContent = css;
+    // (Measured once per grid: its own line-height is gone after)
+    if (on || !el.classList.contains(cls)) el.classList.toggle(cls, on);
   };
   /**
    * DSM's fleXcroll keeps the size its boxes had when it last measured: boxes
@@ -850,6 +830,14 @@
       return out;
     };
   };
+  /** A rendered cell's inner box (of the first row), or a header's */
+  var sampleCell = function (view, rows, cls) {
+    try {
+      if (!rows) { var hd = view.getHeaderCell && view.getHeaderCell(0); return hd && hd.querySelector ? hd.querySelector('.' + cls) : null; }
+      var td = rows.length && view.getCell ? view.getCell(rows[0].rowIndex, 0) : null;
+      return td && td.querySelector ? td.querySelector('.' + cls) : null;
+    } catch (e) { return null; }
+  };
   var sizeGrid = function (view) {
     var cm = view.cm, grid = view.grid;
     if (!cm || !grid || !grid.el || !grid.getGridEl || view.splSizing) return false;
@@ -891,7 +879,8 @@
       if (widest) {
         // The text column takes what is left, or a readable share while the grid scrolls
         if (!scroll) widest.w += avail - sum;
-        else if (widest.text) widest.w = Math.max(widest.w, Math.min(widest.usual, Math.round(avail * 0.6)));
+        // (A grid of one line per cell keeps its share: its value shows whole up to most of the grid)
+        else if (widest.text && !oneLine) widest.w = Math.max(widest.w, Math.min(widest.usual, avail));
       }
       cols.forEach(function (c) { if (!c.fixed && cm.getColumnWidth(c.i) !== c.w) cm.setColumnWidth(c.i, c.w, true); });
       if (view.updateAllColumnWidths) view.updateAllColumnWidths();
@@ -900,9 +889,9 @@
       // Headers are never virtual: they break onto two lines in every grid
       el.classList.add('spl-fit-gridhead');
       el.classList.add('spl-fit-gridsized');
-      // The first column stays in view: a check box column takes the next one with it
-      var pin = scroll ? cols.slice(0, cols[0].fixed && cols.length > 2 ? 2 : 1) : null;
-      pinColumns(view, pin);
+      // Lines of wrapped cells and headers, not rows (measured before the class changes them)
+      if (!el.classList.contains('spl-fit-gridlh')) lineFit(el, oneLine ? null : sampleCell(view, rows, 'x-grid3-cell-inner'), 'spl-fit-gridlh');
+      if (!el.classList.contains('spl-fit-gridhlh')) lineFit(el, sampleCell(view, null, 'x-grid3-hd-inner'), 'spl-fit-gridhlh');
       if (view.syncHeaderScroll) view.syncHeaderScroll();
       // DSM's own scroller (fleXcroll) measured the old widths and heights:
       // without measuring again it does not scroll sideways at all
@@ -1164,16 +1153,27 @@
     });
     watch.observe(d, { subtree: true, childList: true, characterData: true });
   };
+  /** A narrow box with a picture and no text: an icon, not a card */
+  var iconBox = function (c, box) {
+    var d = c.el && c.el.dom;
+    return !!d && (box.width || 0) < CARD_MIN && !/\S/.test(d.textContent || '') && !holdsChart(c) && !!d.querySelector(SHOWN);
+  };
   var cardGrid = function (layout, items, size, result) {
     var ct = layout.container, boxes = result.boxes, cards = [], empty = 0, i;
     if (!narrow() || !ct || !ct.el || (Ext.Toolbar && ct instanceof Ext.Toolbar) || ct.el.hasClass('x-form-composite') || !(size.width > 0)) return false;
+    var icons = [];
     for (i = 0; i < items.length; i++) {
       if (spacer(items[i])) { if (items[i].flex && items[i] instanceof Ext.Panel && (boxes[i].width || 0) < CARD_MIN) empty++; continue; }
-      if (items[i] instanceof Ext.Panel) cards.push(i); else return false;
+      if (!(items[i] instanceof Ext.Panel)) return false;
+      if (iconBox(items[i], boxes[i])) icons.push(i); else cards.push(i);
     }
+    // An icon beside cards that have their room (a status's big icon beside its text) is no card row
+    if (icons.length && cards.length && cards.every(function (j) { return (boxes[j].width || 0) >= CARD_MIN; })) return false;
+    cards = cards.concat(icons).sort(function (a, b) { return a - b; });
     if (cards.length + empty >= 2 && cards.length < 2) waitFilled(ct, items);
     if (cards.length < 2) return false;
-    var pad = layout.padding || { top: 0, left: 0, right: 0, bottom: 0 }, room = size.width - (layout.scrollOffset || 0) - pad.left - pad.right;
+    // (Room Ext keeps for a scroll bar: none where scroll bars float over the content, as on a phone)
+    var pad = layout.padding || { top: 0, left: 0, right: 0, bottom: 0 }, room = size.width - (barWidth() ? layout.scrollOffset || 0 : 0) - pad.left - pad.right;
     // The row's own height before it changes (not yet laid out: nothing to decide)
     if (!ct.splRowH) {
       var tall = 0;
@@ -1204,9 +1204,71 @@
       var last = Math.floor(k / cols) === rows - 1, cw = last ? lastW : w;
       box.left = pad.left + (k % cols) * (cw + CARD_GAP);
       box.top = pad.top + Math.floor(k / cols) * (rowH + CARD_GAP);
-      box.width = cw - m.left - m.right; box.height = rowH - m.top - m.bottom; box.dirtySize = true;
+      // (A desktop margin beside a card spaced the columns: CARD_GAP does that now, so cards one above the other are as wide as each other)
+      box.width = cw; box.height = rowH - m.top - m.bottom; box.dirtySize = true;
     });
+    // One column: a card is as tall as its content (at most the row's height), not the
+    // desktop row's height (a short card of four fields stretched over a whole page)
+    if (cols === 1) {
+      var top = pad.top;
+      cards.forEach(function (j) {
+        var box = boxes[j], m = items[j].margins || { top: 0, bottom: 0 }, h = contentHeight(items[j]);
+        if (h > 0 && h < box.height) { box.height = h; items[j].splFitH = true; }
+        box.top = top; top += m.top + box.height + m.bottom + CARD_GAP;
+      });
+      return top - CARD_GAP + pad.bottom;
+    }
     return pad.top + pad.bottom + rows * rowH + (rows - 1) * CARD_GAP;
+  };
+  // A card set to its content's height whose content grew after (a field filled in
+  // by a later request) lays its row out again; a value a card cuts off with an
+  // ellipsis at a desktop width wraps onto more lines inside the card
+  var regrowCards = function (root) {
+    var owners = [];
+    Array.prototype.forEach.call(root.querySelectorAll('.spl-fit-card'), function (d) {
+      var c = Ext.getCmp(d.id), body = c && c.splFitH && c.body && c.body.dom;
+      if (body && body.scrollHeight > body.clientHeight + 2 && c.ownerCt && owners.indexOf(c.ownerCt) < 0) owners.push(c.ownerCt);
+    });
+    owners.forEach(function (o) { try { o.doLayout(false, true); } catch (e) { /* its own layout */ } });
+  };
+  var unclipCards = function (root) {
+    Array.prototype.forEach.call(root.querySelectorAll('.spl-fit-card .x-panel-body *'), function (e) {
+      if (e.classList.contains('spl-fit-unclip') || !ownText(e) || e.closest(NO_REPAIR) || e.clientWidth <= 0 || e.scrollWidth <= e.clientWidth) return;
+      var cs = getComputedStyle(e);
+      if (cs.textOverflow !== 'ellipsis' || cs.overflowX === 'visible') return;
+      e.classList.add('spl-fit-unclip'); keep(e, 'spl-fit-unclip');
+    });
+  };
+  var bar = null;
+  var barWidth = function () {
+    if (bar === null) {
+      try {
+        var d = document.createElement('div');
+        d.style.cssText = 'position:absolute;top:-1000px;width:100px;height:50px;overflow:scroll';
+        document.body.appendChild(d); bar = (d.offsetWidth - d.clientWidth) || 0; document.body.removeChild(d);
+      } catch (e) { bar = 0; }
+    }
+    return bar;
+  };
+  /**
+   * The height a panel's content takes: its frame (header, footer, borders)
+   * and what its body holds in the flow, laid out at the width it has now.
+   * 0 when it cannot tell (a body laid out by a box layout fills its height).
+   */
+  var contentHeight = function (c) {
+    var d = c.el && c.el.dom, body = c.body && c.body.dom;
+    if (!d || !body || !body.offsetHeight || c.layout && /box|border|fit|card|anchor|column|table/.test(c.layout.type || '') && c.layout.type !== 'auto' && c.layout.type !== 'form') return 0;
+    var bottom = 0, kids = body.children;
+    for (var i = 0; i < kids.length; i++) {
+      var k = kids[i], cs = getComputedStyle(k);
+      if (!k.offsetHeight || /absolute|fixed/.test(cs.position)) continue;
+      bottom = Math.max(bottom, k.offsetTop + k.offsetHeight + px(cs.marginBottom));
+    }
+    if (!bottom) return 0;
+    // (Measured from the body's own top: the body is positioned, or its offsets count from where it starts)
+    var bcs = getComputedStyle(body), offs = bcs.position === 'static' ? body.offsetTop : 0;
+    bottom += px(bcs.paddingBottom) + px(bcs.borderBottomWidth) - offs;
+    return Math.ceil(d.offsetHeight - body.offsetHeight + bottom);
   };
   // ---- Gaps between squeezed items ---------------------------------------------
   // An hbox spaces its items with empty boxes (Ext spacers, blank containers,
@@ -2732,6 +2794,113 @@
     }
     return found;
   };
+  // Ext sizes the boxes it lays out in pixels, at the heights they had on a desktop: a vbox
+  // item measured when its text was one line, a panel whose body ends where its buttons
+  // start. Narrow, the text wraps past that height, and the next box, placed at its fixed
+  // top or at the panel's bottom (a row of buttons), is drawn over it (a status title, its
+  // text and "Last backup" over Scan / Generate report). Rule, from the page alone: a text
+  // drawn over a box placed absolutely (an Ext box item, a panel's buttons) that comes
+  // after the box holding the text: the Ext box holding the text grows by what it runs
+  // over, and so does each box around it whose height a layout set, up to one that can
+  // give the room: a top or bottom region (the rest of the window shrinks), a box that
+  // scrolls, or one whose height follows its content. Ext then lays them out again, the
+  // covered box in its place under the text. A few times per box; back to the App's own
+  // heights when the width changes.
+  var SPILL_GAP = 8, SPILL_MAX = 480, SPILL_TRIES = 3;
+  var spilled = [];
+  var extOf = function (e) {
+    for (; e && e !== document.body; e = e.parentElement) { var c = e.id && Ext.getCmp(e.id); if (c) return c; }
+    return null;
+  };
+  var sized = function (c) { return !!(c && c.el && c.el.dom && /px$/.test(c.el.dom.style.height)); };
+  var scrollsY = function (c) {
+    var t = c.getLayoutTarget && c.getLayoutTarget();
+    return !!(t && t.dom && /auto|scroll/.test(getComputedStyle(t.dom).overflowY));
+  };
+  /** Ext gives c the height h (and keeps it while it lays out again); the App's own comes back on unspill */
+  var setSpillHeight = function (c, h) {
+    if (!c.splSpill) { c.splSpill = { height: c.height, flex: c.flex }; spilled.push(c); }
+    c.height = h; c.flex = 0;
+    try { c.setHeight(h); } catch (e) { /* its owner sizes it */ }
+  };
+  /** c (an Ext box) grows by d px, and each box around it whose height its layout set; returns the box to lay out again */
+  var growBy = function (c, d) {
+    var L = Ext.layout, top = null;
+    for (var n = 0; c && n < 16; n++) {
+      var o = c.ownerCt, lay = o && o.layout;
+      if (!o || !lay) break;
+      if (L.BorderLayout && lay instanceof L.BorderLayout) {
+        // A top or bottom region takes the room from the center; the center scrolls or fits itself
+        if (/north|south/.test(c.region || '')) { setSpillHeight(c, c.getHeight() + d); top = o; }
+        break;
+      }
+      if (L.VBoxLayout && lay instanceof L.VBoxLayout) { if (!c.flex) setSpillHeight(c, c.getHeight() + d); top = o; c = o; continue; }
+      // A row (its items as high as the row) or a box that fills its owner: the owner grows
+      // A row: an item it stretches grows with the row, one at its own height grows itself too
+      if (L.HBoxLayout && lay instanceof L.HBoxLayout) { if (!/stretch/.test(lay.align || '')) setSpillHeight(c, c.getHeight() + d); top = o; c = o; continue; }
+      // A box that fills its owner: the owner grows
+      if (L.FitLayout && lay instanceof L.FitLayout) { top = o; c = o; continue; }
+      // In the flow of its owner: its own height, and the owner's while a layout set that one
+      if (sized(c) || typeof c.height === 'number') setSpillHeight(c, c.getHeight() + d);
+      top = o;
+      if (sized(o) && !scrollsY(o)) { c = o; continue; }
+      break;
+    }
+    return top;
+  };
+  var unspill = function () {
+    var owners = [];
+    spilled.forEach(function (c) {
+      var was = c.splSpill;
+      c.splSpill = undefined; c.splSpillN = 0;
+      if (!was || c.isDestroyed) return;
+      c.height = was.height; c.flex = was.flex;
+      if (c.ownerCt && owners.indexOf(c.ownerCt) < 0) owners.push(c.ownerCt);
+    });
+    spilled = [];
+    owners.forEach(function (o) { try { if (o.rendered && !o.isDestroyed) o.doLayout(); } catch (e) { /* its own layout */ } });
+  };
+  /** A text leaf's lines: where they end */
+  var leafBottom = function (e) { var b = textBottom(e); return b > -Infinity ? b : e.getBoundingClientRect().bottom; };
+  var extSpills = function (root) {
+    if (!window.Ext || !Ext.getCmp || !Ext.layout || !narrow()) return;
+    var all = root.querySelectorAll('*'), done = [], tops = [];
+    for (var i = 0; i < all.length && i < CAP; i++) {
+      var t = all[i];
+      if (!ownText(t) || !visible(t) || t.closest(LEAF_SKIP)) continue;
+      var tr = t.getBoundingClientRect();
+      if (tr.width < 4 || tr.height < 4) continue;
+      // Up to the box that holds the text, next to a box placed after it that is drawn over it
+      for (var a = t, depth = 0; a && a !== root && depth < 10; a = a.parentElement, depth++) {
+        var hit = null;
+        for (var s = a.nextElementSibling; s && !hit; s = s.nextElementSibling) {
+          if (!visible(s) || getComputedStyle(s).position !== 'absolute') continue;
+          var sr = s.getBoundingClientRect();
+          if (sr.top <= tr.top + 2 || sr.top >= tr.bottom - 2 || sr.left >= tr.right || sr.right <= tr.left) continue;
+          // Something to see where they meet: a text or a control in the covered box
+          if (Array.prototype.some.call(s.querySelectorAll('*'), function (k) {
+            if (!visible(k) || !(ownText(k) || k.matches(CONTROL) || k.matches('em, [class*=icon]'))) return false;
+            return meets(k.getBoundingClientRect(), tr);
+          })) hit = s;
+        }
+        if (!hit) continue;
+        var c = extOf(a);
+        if (!c || done.indexOf(c) >= 0 || (c.splSpillN || 0) >= SPILL_TRIES) break;
+        // What the box's texts need below the covered box's top
+        var need = 0, cover = hit.getBoundingClientRect().top;
+        Array.prototype.forEach.call([a].concat(Array.prototype.slice.call(a.querySelectorAll('*'))), function (k) { if (ownText(k) && visible(k)) need = Math.max(need, leafBottom(k)); });
+        var d = Math.ceil(need - cover + SPILL_GAP);
+        if (d > 0 && d <= SPILL_MAX) {
+          done.push(c); c.splSpillN = (c.splSpillN || 0) + 1;
+          var top = growBy(c, d);
+          if (top && tops.indexOf(top) < 0) tops.push(top);
+        }
+        break;
+      }
+    }
+    tops.forEach(function (o) { try { if (o.rendered && !o.isDestroyed) o.doLayout(false, true); } catch (e) { /* its own layout */ } });
+    return tops.length > 0;
+  };
   /** Absolutely positioned text over the in-flow text of the header it sits in */
   var findOverlaps = function (root) {
     var found = [], all = root.querySelectorAll('*');
@@ -2779,6 +2948,7 @@
   //     readable; otherwise the next row up is tried.
   //  e. Floated cards side by side stack (see floatCards).
   //  f. Rows of fixed boxes that line up as a table scale or scroll (see fixedRows).
+  //  j. A lone row of floated boxes wider than its room wraps (see floatRows).
   // What is still squeezed after these keeps a readable width (keepWide).
   var NAV_ROLE = 'nav, [role=navigation], [role=tree], [role=menu], [role=menubar], [role=tablist]';
   var NAV_ITEM = '[role=menuitem], [role=treeitem], [role=tab], [role=option], [role=link], a[href], li';
@@ -2788,7 +2958,7 @@
   var repairs = [];
   var keep = function (el, cls) { repairs.push({ el: el, cls: cls }); };
   // The variable a repair's class reads its size from
-  var REPAIR_VAR = { 'spl-fit-cap': ['--spl-fit-cap'], 'spl-fit-pad': ['--spl-fit-pad'], 'spl-fit-meter': ['--spl-fit-h'], 'spl-fit-grow': ['--spl-fit-min'], 'spl-fit-rows-row': ['--spl-fit-row', '--spl-fit-zoom'] };
+  var REPAIR_VAR = { 'spl-fit-cap': ['--spl-fit-cap'], 'spl-fit-pad': ['--spl-fit-pad'], 'spl-fit-meter': ['--spl-fit-h'], 'spl-fit-grow': ['--spl-fit-min'], 'spl-fit-rows-row': ['--spl-fit-row', '--spl-fit-zoom'], 'spl-fit-floatrow': ['--spl-fit-min', '--spl-fit-inset'] };
   var drop = function (r) { r.el.classList.remove(r.cls); (REPAIR_VAR[r.cls] || []).forEach(function (v) { r.el.style.removeProperty(v); }); };
   var undoRepairs = function () {
     repairs.forEach(drop);
@@ -3346,20 +3516,56 @@
   //    bottom with nothing to scroll. Rule: a box about the size of the page (at least
   //    CLIP_PAGE_W of the screen wide and CLIP_PAGE_H high) that hides what overflows,
   //    when its content in the flow runs more than CLIP_OVER px past its bottom and no
-  //    box around it scrolls, scrolls itself, and the page inside grows to its content
+  //    box around it scrolls, scrolls itself, and the page inside grows to its content.
+  //    A box that fills the width inside a page's padding (a card's body, Security
+  //    Advisor's overview) is as wide as the page.
+  //    And a framed box (a background or a border) whose stylesheet height is shorter
+  //    than its content in the flow (a card 425 px tall around a 608 px body) grows to
+  //    that content: its background no longer ends halfway down what it frames
   var CLIP_PAGE_W = 0.85, CLIP_PAGE_H = 0.5, CLIP_OVER = 24;
+  var pageWide = function (e, vw) {
+    for (var n = 0; e && n < 8; n++, e = e.parentElement) {
+      if (e.offsetWidth >= vw * CLIP_PAGE_W) return true;
+      var p = e.parentElement;
+      if (!p) return false;
+      var pcs = getComputedStyle(p);
+      if (e.offsetWidth < p.clientWidth - px(pcs.paddingLeft) - px(pcs.paddingRight) - 2) return false;
+    }
+    return false;
+  };
+  var flowBottom = function (e) {
+    var bottom = -Infinity;
+    flowKids(e).forEach(function (c) {
+      var cr = c.getBoundingClientRect(), tall = getComputedStyle(c).overflowY === 'visible' ? Math.max(c.scrollHeight, c.offsetHeight) : c.offsetHeight;
+      bottom = Math.max(bottom, cr.top + tall + px(getComputedStyle(c).marginBottom));
+    });
+    return bottom;
+  };
+  var framed = function (cs) {
+    var bg = cs.backgroundColor || 'transparent';
+    return !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(bg) || px(cs.borderBottomWidth) > 0 && !!cs.borderBottomStyle && cs.borderBottomStyle !== 'none';
+  };
+  var shortFrames = function (root) {
+    var all = root.querySelectorAll('div');
+    for (var i = 0; i < all.length && i < CAP; i++) {
+      var e = all[i];
+      if (!e.offsetHeight || e.style.height || e.classList.contains('spl-fit-grow') || e.closest(NO_REPAIR)) continue;
+      var cs = getComputedStyle(e);
+      if (cs.overflowY !== 'visible' || !/static|relative/.test(cs.position) || !framed(cs) || e.scrollHeight <= e.clientHeight + CLIP_OVER) continue;
+      var r = e.getBoundingClientRect(), bottom = flowBottom(e) + px(cs.paddingBottom) + px(cs.borderBottomWidth);
+      if (bottom <= r.bottom + CLIP_OVER) continue;
+      e.style.setProperty('--spl-fit-min', Math.ceil(bottom - r.top) + 'px');
+      e.classList.add('spl-fit-grow'); keep(e, 'spl-fit-grow');
+    }
+  };
   var clippedPages = function (root) {
     var vw = window.innerWidth, vh = window.innerHeight, all = [root].concat(Array.prototype.slice.call(root.querySelectorAll('div, section, main'), 0, CAP));
     for (var i = 0; i < all.length; i++) {
       var e = all[i];
-      if (e.offsetWidth < vw * CLIP_PAGE_W || e.offsetHeight < vh * CLIP_PAGE_H || e.scrollHeight <= e.clientHeight + CLIP_OVER || e.classList.contains('spl-fit-page-scroll')) continue;
+      if (e.offsetHeight < vh * CLIP_PAGE_H || e.scrollHeight <= e.clientHeight + CLIP_OVER || e.classList.contains('spl-fit-page-scroll') || !pageWide(e, vw)) continue;
       var cs = getComputedStyle(e);
       if (!/hidden|clip/.test(cs.overflowY) || e.matches(SCROLLER_PART) || e.closest(NO_REPAIR)) continue;
-      var r = e.getBoundingClientRect(), bottom = -Infinity;
-      flowKids(e).forEach(function (c) {
-        var cr = c.getBoundingClientRect(), tall = getComputedStyle(c).overflowY === 'visible' ? Math.max(c.scrollHeight, c.offsetHeight) : c.offsetHeight;
-        bottom = Math.max(bottom, cr.top + tall + px(getComputedStyle(c).marginBottom));
-      });
+      var r = e.getBoundingClientRect(), bottom = flowBottom(e);
       if (bottom <= r.bottom + CLIP_OVER) continue;
       var scrolls = false;
       for (var a = e.parentElement; a && !scrolls; a = a.parentElement) scrolls = /auto|scroll/.test(getComputedStyle(a).overflowY) && a.scrollHeight > a.clientHeight + 2;
@@ -3429,6 +3635,44 @@
       });
     }
   };
+  // j. A row of floated boxes, each at a desktop width from a stylesheet (an icon and a name
+  //    238 px, a status 196 px, a mark 64 px), in a row narrower than their sum: the boxes
+  //    that no longer fit float onto a line the row's height does not hold, over the next
+  //    row, and a status set not to wrap is cut ("No malware was…"). Rule, from the page
+  //    alone: a box whose boxes in the flow are all floated (two or more, under
+  //    FLOAT_CARD_H high: taller ones are cards, floatCards()), together wider than the
+  //    box, becomes a row that wraps: each box its content's width at most the row's,
+  //    a box of text (any but a picture alone) takes the rest of its line and wraps its
+  //    text, a box floated right stays at the end. The row grows to its content; a row placed
+  //    absolutely joins the flow, so the box around it grows too (findSpills()).
+  //    Kept until the width changes.
+  var FLOAT_SKIP = NO_REPAIR.replace(', .spl-fit-wide', '');
+  var floatText = function (kids) { kids.forEach(function (k) { k.classList.add('spl-fit-floatrow-text'); keep(k, 'spl-fit-floatrow-text'); }); };
+  var floatRows = function (root) {
+    var all = root.querySelectorAll('div');
+    for (var i = 0; i < all.length && i < CAP; i++) {
+      var p = all[i];
+      // A box the App filled in later (a status text after its scan result loads) is text too
+      if (p.classList.contains('spl-fit-floatrow')) { floatText(Array.prototype.filter.call(p.children, function (k) { return !k.classList.contains('spl-fit-floatrow-text') && /\S/.test(k.textContent || ''); })); continue; }
+      // (Also in content kept wide: it is measured at the screen's width first, keepWide())
+      if (!p.offsetWidth || p.closest('.spl-fit-floatrow, .spl-fit-rows-row, .spl-fit-fill') || p.closest(FLOAT_SKIP) || !/\S/.test(p.textContent || '')) continue;
+      var kids = flowKids(p).filter(function (k) { return k.offsetHeight > 0; });
+      if (kids.length < 2 || !kids.every(function (k) { return floated(k) && k.offsetHeight < FLOAT_CARD_H; })) continue;
+      var pcs = getComputedStyle(p), room = p.clientWidth - px(pcs.paddingLeft) - px(pcs.paddingRight), sum = 0;
+      kids.forEach(function (k) { var cs = getComputedStyle(k); sum += k.offsetWidth + px(cs.marginLeft) + px(cs.marginRight); });
+      if (room < 60 || sum <= room + 2) continue;
+      // Every box but a picture alone (a status mark) is text, or will be once the App fills it in
+      var texts = kids.filter(function (k) { return /\S/.test(k.textContent || '') || !k.querySelector(SHOWN); });
+      floatText(texts);
+      kids.forEach(function (k) { if (getComputedStyle(k).float === 'right') { k.classList.add('spl-fit-floatrow-end'); keep(k, 'spl-fit-floatrow-end'); } });
+      p.style.setProperty('--spl-fit-min', Math.round(p.offsetHeight) + 'px');
+      // A text that wraps onto a line of its own starts where the first box's content does
+      var lead = Array.prototype.filter.call(kids[0].querySelectorAll('*'), function (n) { return n.offsetWidth > 0; })[0];
+      var inset = lead ? Math.round(lead.getBoundingClientRect().left - kids[0].getBoundingClientRect().left) : 0;
+      p.style.setProperty('--spl-fit-inset', Math.max(0, Math.min(inset, 48)) + 'px');
+      p.classList.add('spl-fit-floatrow'); keep(p, 'spl-fit-floatrow');
+    }
+  };
   var step = function (f) { try { f(); } catch (e) { /* presentation only */ } };
   var repairWidth = 0;
   var repair = function (root) {
@@ -3448,6 +3692,10 @@
     // Rows are measured in the cards' final width: after they stacked
     if (!stacked) step(function () { fixedRows(root); });
     step(function () { meterRows(root); });
+    var rows = repairs.length;
+    step(function () { floatRows(root); });
+    // Rows that now wrap in content kept wide: the readable width decides again at the screen's width
+    if (repairs.length > rows) Array.prototype.forEach.call(root.querySelectorAll('.spl-fit-wide'), function (w) { w.splSig = null; if (w.firstElementChild) w.firstElementChild.splSig = null; });
     // Cards that stacked: their content is measured again at the new width
     if (stacked) contentSoon(false);
     // DSM's own scrollbars (fleXcroll) measured the content before: measure again
@@ -3474,6 +3722,7 @@
         reflowed.forEach(unflow); reflowed = [];
         fits.forEach(unfit); fits = [];
         grown.forEach(ungrow); grown = [];
+        step(unspill);
         reflowWidth = width;
       }
       // Side menus, rows and widths first: what spills or is cut off is measured after
@@ -3483,12 +3732,13 @@
       step(function () { chartRows(root); });
       step(function () { staleGrids(root); });
       step(function () { flexedRows(root); });
+      step(function () { extSpills(root); });
       step(function () { chartMasks(root); });
       // Boxes that spill over what follows grow first: the rest is measured after
       grown = grown.filter(function (e) { return e.isConnected && e.classList.contains('spl-fit-grow'); });
       findSpills(root).forEach(function (e) { e.classList.add('spl-fit-grow'); grown.push(e); });
       // A page that cuts off what now runs past its bottom scrolls: measured once the boxes grew
-      step(function () { clippedPages(root); });
+      step(function () { clippedPages(root); shortFrames(root); });
       reflowed = reflowed.filter(function (rec) {
         if (!rec.group[0].isConnected) { unflow(rec); return false; }
         if (rec.group.every(function (g) { return g.classList.contains('spl-fit-reflow'); }) && rec.cb.classList.contains('spl-fit-reflow-grow')) return true;
@@ -3498,6 +3748,9 @@
       findOverlaps(root).forEach(function (rec) { flow(rec); reflowed.push(rec); });
       // Content that data filled in may now be cut off: keep a readable width
       windows().forEach(function (w) { if (isVue(w)) keepWideVue(w); else keepWide(w); });
+      // Laid out again at the screen's width (no longer kept wide), Ext sets the heights it cuts off at
+      step(function () { clippedPages(root); shortFrames(root); });
+      step(function () { unclipCards(root); regrowCards(root); });
       // 1. Fit or expand
       // (graphics in an App underneath keep their state until it is on top again)
       fits = fits.filter(function (rec) { if (rec.root !== root) return true; var keep = fitOne(rec, root); if (!keep) unfit(rec); return keep; });
