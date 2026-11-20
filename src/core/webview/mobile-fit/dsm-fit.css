@@ -314,6 +314,9 @@ html.spl-fit:not(#spl-fit-id) .spl-fit-gutter { padding-left: 12px !important; p
 /* A floated card whose content needs more than its share of the row (dsm-fit.js floatCards): the row's full width */
 html.spl-fit:not(#spl-fit-id) .spl-fit-fill { float: none !important; width: auto !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
 html.spl-fit:not(#spl-fit-id) .spl-fit-fill .spl-fit-fill-in { width: auto !important; }
+/* Cards that each wrapped onto a line of their own (dsm-fit.js floatCards()): the same side margins */
+html.spl-fit:not(#spl-fit-id) .spl-fit-fill.spl-fit-fill-bg { background-position-x: var(--spl-fit-bgx) !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-fill.spl-fit-fill-even { margin-left: var(--spl-fit-side, 0px) !important; margin-right: var(--spl-fit-side, 0px) !important; }
 /* Rows of fixed boxes that line up as a table: each row keeps its width (--spl-fit-row), scaled to the room (--spl-fit-zoom), or the box they sit in scrolls */
 html.spl-fit:not(#spl-fit-id) .spl-fit-rows-row { min-width: var(--spl-fit-row) !important; box-sizing: border-box !important; zoom: var(--spl-fit-zoom, 1); }
 html.spl-fit:not(#spl-fit-id) .spl-fit-rows-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
@@ -321,7 +324,7 @@ html.spl-fit:not(#spl-fit-id) .spl-fit-rows-scroll { overflow-x: auto !important
 html.spl-fit:not(#spl-fit-id) .spl-fit-col { max-width: var(--spl-fit-cap, 100vw) !important; min-width: 0 !important; box-sizing: border-box !important; overflow-wrap: anywhere; background-size: contain !important; background-position: center !important; background-repeat: no-repeat !important; }
 
 /* A box with a stylesheet height that spilled over what follows grows to its content (dsm-fit.js findSpills) */
-html.spl-fit:not(#spl-fit-id) .spl-fit-grow { height: auto !important; min-height: var(--spl-fit-min, 0px) !important; }
+html.spl-fit:not(#spl-fit-id) .spl-fit-grow { height: auto !important; min-height: var(--spl-fit-min, 0px) !important; max-height: none !important; }
 /* A hidden window keeps its desktop size and place (Ext hides it with
    visibility): out of the page's scroll width, so the App does not scroll
    sideways into blank space. Fixed at the same place: the page sits at 0,0. */

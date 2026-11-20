@@ -1083,7 +1083,7 @@ test('spilled box: a stylesheet height its content outgrows grows to the content
   const { d } = contentPage([wrapper]);
   assert.ok(header.cls.has('spl-fit-grow'));
   assert.equal(header.vars['--spl-fit-min'], '178px', 'never smaller than DSM made it');
-  assert.match(readFileSync('src/core/webview/mobile-fit/dsm-fit.css', 'utf8'), /\.spl-fit-grow \{ height: auto !important; min-height: var\(--spl-fit-min, 0px\) !important; \}/);
+  assert.match(readFileSync('src/core/webview/mobile-fit/dsm-fit.css', 'utf8'), /\.spl-fit-grow \{ height: auto !important; min-height: var\(--spl-fit-min, 0px\) !important; max-height: none !important; \}/);
   assert.equal(d.steps, 0);
 });
 
@@ -1111,6 +1111,49 @@ test('spilled text: a one-line block whose text wraps over the text under it gro
   usagePage([panel]);
   assert.ok(title.cls.has('spl-fit-grow'));
   assert.equal(title.vars['--spl-fit-min'], '36px', 'never smaller than DSM made it');
+  assert.equal(desc.cls.has('spl-fit-grow'), false);
+});
+
+test('spilled text: the same title in a dialog over the App, a window of its own, grows', () => {
+  const { panel, title, desc } = baselineTitle();
+  const { d } = usagePage([node('div', { box: { left: 0, top: 0, width: 393, height: 600 }, text: 'Ready to scan' })]);
+  assert.equal(title.cls.has('spl-fit-grow'), false, 'not shown yet');
+  // Security Advisor opens Security Baseline as a dialog on top of its window, outside it
+  const dialog = d.extWindow({ dialog: true });
+  const box = node('div', { cls: 'x-window', box: { left: 0, top: 0, width: 393, height: 716 } }, [panel]);
+  box.style.zIndex = '20'; box.connected = true;
+  dialog.el.dom = box;
+  d.changed(); d.p.advance(400);
+  assert.ok(title.cls.has('spl-fit-grow'));
+  assert.equal(title.vars['--spl-fit-min'], '36px');
+  assert.equal(desc.cls.has('spl-fit-grow'), false);
+});
+
+/**
+ * Security Baseline's description: a stylesheet caps it at four 20 px lines; on a phone it takes
+ * five, and the panel around it hides its overflow, so the last line is cut off.
+ */
+function baselineDesc(overflowY: string) {
+  const desc = node('div', { cls: 'descpanel-desctext', box: { left: 20, top: 122, width: 320, height: 88 }, text: 'Choose your main purpose for using DSM.' });
+  desc.naturalHeight = 104; desc.textBox = { left: 20, top: 126, width: 320, height: 100 };
+  const title = node('div', { cls: 'descpanel-title', box: { left: 20, top: 56, width: 320, height: 66 }, text: 'What are you mainly using your DSM for?' });
+  const body = node('div', { cls: 'x-panel-body', box: { left: 20, top: 56, width: 320, height: 154 }, cs: { overflowY } }, [title, desc]);
+  body.naturalHeight = 170;
+  return { body, desc };
+}
+
+test('spilled text: a block whose last line a box hiding its overflow cuts off grows to its lines', () => {
+  const { body, desc } = baselineDesc('hidden');
+  usagePage([body]);
+  assert.ok(desc.cls.has('spl-fit-grow'));
+  assert.equal(desc.vars['--spl-fit-min'], '88px');
+  // A stylesheet's max-height would cap it again
+  assert.match(readFileSync('src/core/webview/mobile-fit/dsm-fit.css', 'utf8'), /\.spl-fit-grow \{[^}]*max-height: none !important;/);
+});
+
+test('spilled text: a spill in a box that scrolls can be scrolled to and is left alone', () => {
+  const { body, desc } = baselineDesc('auto');
+  usagePage([body]);
   assert.equal(desc.cls.has('spl-fit-grow'), false);
 });
 
@@ -2503,6 +2546,49 @@ test('desktop gutters: a main panel padded for a desktop window keeps phone gutt
   assert.ok(!side.cls.has('spl-fit-gutter'), 'a box in part of the window keeps its padding');
   const css = readFileSync('src/core/webview/mobile-fit/dsm-fit.css', 'utf8');
   assert.match(css, /\.spl-fit-gutter \{ padding-left: 12px !important; padding-right: 12px !important; margin-left: 0 !important; margin-right: 0 !important; width: auto !important;/);
+});
+
+/**
+ * Security Baseline's two choices on a 360 px phone: cards floated left and right at their desktop
+ * width (338 px and a 2 px border each), the first with a 20 px margin on its left, the second on
+ * its right. They no longer fit side by side: each wraps onto a line of its own and sticks out of
+ * the row on one side. The selected card draws its corner mark as a background at its right edge.
+ */
+function choiceCards({ fits = false } = {}) {
+  const w = fits ? 300 : 342;
+  const mark = { backgroundImage: 'url(icn_selected.png)', backgroundPositionX: `${w - 63}px`, backgroundSize: '62px 62px' };
+  const home = node('div', { cls: 'item-left', box: { left: 20, top: 222, width: w, height: 300 }, cs: { float: 'left', marginLeft: '20px', ...mark } }, [node('div', { box: { left: 20, top: 400, width: w, height: 20 }, text: 'For home and personal use' })]);
+  const work = node('div', { cls: 'item-right', box: { left: fits ? 40 : -2, top: 534, width: w, height: 300 }, cs: { float: 'right', marginRight: '20px', backgroundImage: 'none' } }, [node('div', { box: { left: 0, top: 700, width: w, height: 20 }, text: 'For work and business' })]);
+  const row = node('div', { box: { left: 0, top: 222, width: 360, height: 0 } }, [home, work]);
+  return { row, home, work };
+}
+
+test('floated cards: cards that each wrapped onto a line of their own and stick out fill the row with even margins', () => {
+  const { row, home, work } = choiceCards();
+  const { d } = contentPage([row]);
+  for (const c of [home, work]) {
+    assert.ok(c.cls.has('spl-fit-fill') && c.cls.has('spl-fit-fill-even'));
+    assert.equal(c.vars['--spl-fit-side'], '20px', 'the larger of their side margins, on both sides');
+  }
+  // Its corner mark stays at its right edge (1 px past the mark at the old width)
+  assert.ok(home.cls.has('spl-fit-fill-bg'));
+  assert.equal(home.vars['--spl-fit-bgx'], 'right 1px');
+  assert.equal(work.cls.has('spl-fit-fill-bg'), false);
+  // The other card selected later: its mark moves too
+  Object.assign(work.cs, { backgroundImage: 'url(icn_selected.png)', backgroundPositionX: '279px', backgroundSize: '62px 62px' });
+  d.changed(); d.p.advance(400);
+  assert.ok(work.cls.has('spl-fit-fill-bg'));
+  assert.equal(work.vars['--spl-fit-bgx'], 'right 1px');
+  const css = readFileSync('src/core/webview/mobile-fit/dsm-fit.css', 'utf8');
+  assert.match(css, /\.spl-fit-fill\.spl-fit-fill-even \{ margin-left: var\(--spl-fit-side, 0px\) !important; margin-right: var\(--spl-fit-side, 0px\) !important; \}/);
+  assert.match(css, /\.spl-fit-fill\.spl-fit-fill-bg \{ background-position-x: var\(--spl-fit-bgx\) !important; \}/);
+});
+
+test('floated cards: cards that wrapped inside the row are left alone', () => {
+  const { row, home, work } = choiceCards({ fits: true });
+  contentPage([row]);
+  assert.equal(home.cls.has('spl-fit-fill'), false);
+  assert.equal(work.cls.has('spl-fit-fill'), false);
 });
 
 /**

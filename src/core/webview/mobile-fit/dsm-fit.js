@@ -1797,7 +1797,7 @@
    * its cover up until it goes. Its removal is inside the App's content, which the window watchers
    * do not see, so the page looks again shortly while it lasts.
    */
-  var busyTimer = null;
+  var busyTimer = null, shownCount = 0;
   var busy = function (app) {
     var el = dom(app), masks = el && el.querySelectorAll ? el.querySelectorAll('.ext-el-mask-msg, .x-mask-loading') : [];
     for (var i = 0; i < masks.length; i++) {
@@ -1871,6 +1871,8 @@
     layers();
     scanEdges();
     watchContent(dom(apps[0]));
+    // A dialog opened or closed over the App: its content gets a pass too
+    if (list.length !== shownCount) { shownCount = list.length; contentSoon(false); }
     report(apps[0], stack(list).length);
   };
   // The embedded desktop's list of Apps (see embeddedDesk)
@@ -2735,6 +2737,8 @@
   // line, or over what follows the row when the cell is on its last line.
   // And to a block of text set one line tall (a title with height and
   // line-height 30 px) whose text wraps to two lines over the text under it.
+  // A spill that nothing covers but a box hiding its overflow cuts off (a
+  // description a line longer than its stylesheet height) grows the same way.
   var grown = [];
   var ungrow = function (e) { e.classList.remove('spl-fit-grow'); e.style.removeProperty('--spl-fit-min'); };
   var inFlowBox = function (n) { return n.offsetHeight && !/absolute|fixed/.test(getComputedStyle(n).position); };
@@ -2752,6 +2756,15 @@
       }
       // A block stops at what follows it; an inline block's row may end before its spill does
       if (!inline || !a.parentElement || a.parentElement.getBoundingClientRect().bottom >= bottom - 2) return false;
+    }
+    return false;
+  };
+  /** Whether a box around e that hides its overflow cuts off what spills to bottom (one that scrolls shows it) */
+  var spillCut = function (e, bottom) {
+    for (var a = e.parentElement, depth = 0; a && a !== document.body && depth < 6; a = a.parentElement, depth++) {
+      var oy = getComputedStyle(a).overflowY;
+      if (oy === 'auto' || oy === 'scroll') return false;
+      if (oy === 'hidden' || oy === 'clip') return a.getBoundingClientRect().bottom - (a.clientTop || 0) < bottom - 2;
     }
     return false;
   };
@@ -2787,8 +2800,9 @@
       var inline = /^inline-/.test(cs.display), lines = textBottom(e);
       if (lines > r.bottom + 2) { top = Math.min(top, r.top); bottom = Math.max(bottom, lines); }
       if (bottom - top <= e.clientHeight + 2 || bottom <= r.bottom + 2) continue;
-      // Only when what comes next in the flow is drawn over the spilled part
-      if (!spillCovered(e, r, bottom, inline)) continue;
+      // Only when what comes next in the flow is drawn over the spilled part, or a box
+      // around it cuts it off (Security Baseline's description, a line short in its panel)
+      if (!spillCovered(e, r, bottom, inline) && !spillCut(e, bottom)) continue;
       e.style.setProperty('--spl-fit-min', Math.round(r.height) + 'px');
       found.push(e);
     }
@@ -3368,6 +3382,14 @@
   //    width, and an Ext panel that filled a card fills it again. What the
   //    other repairs did inside is decided again at the new width. Kept until
   //    the width changes, so a repair it undoes never makes it flip back.
+  //    Cards set to a desktop width that no longer fit side by side each wrap
+  //    onto a line of their own, still the desktop width with their side
+  //    margins, sticking out of the row on one side or the other (Security
+  //    Advisor's Security Baseline choices: 338 px, a 20 px margin on the
+  //    left of one and the right of the other, in a 360 px row): they fill
+  //    the row too, each with the larger of their side margins on both sides.
+  //    A card's background placed at its right edge (a selected card's corner
+  //    mark) stays at the right edge of the card's new width.
   var FLOAT_CARD_H = 100;
   var SQUEEZED = '.spl-fit-cap, .spl-fit-rows-row, .spl-fit-stack, .spl-fit-stack-flex, .spl-fit-stack-grid, .spl-fit-scaled, .spl-fit-pan, .spl-fit-wrap';
   var floated = function (e) { var f = getComputedStyle(e).float; return !!f && f !== 'none'; };
@@ -3416,31 +3438,59 @@
     if (changed) unsqueeze(rec.el);
     return changed;
   };
+  /**
+   * A mark drawn at a card's right edge (a selected card's corner: a background at 279 px of
+   * 338) stays at the right edge of its new width; measured at the old width, also for a
+   * card selected later
+   */
+  var markRight = function (rec) {
+    var c = rec.el;
+    if (c.classList.contains('spl-fit-fill-bg')) return;
+    var cs = getComputedStyle(c), x = /^(-?[\d.]+)px$/.exec(cs.backgroundPositionX || ''), w = /^([\d.]+)px/.exec(cs.backgroundSize || '');
+    if (!cs.backgroundImage || cs.backgroundImage === 'none' || !x || !w || +x[1] <= rec.area / 2 || +x[1] + +w[1] < rec.area - 8) return;
+    c.style.setProperty('--spl-fit-bgx', 'right ' + Math.round(rec.area - +x[1] - +w[1]) + 'px');
+    c.classList.add('spl-fit-fill-bg');
+  };
   var unsqueeze = function (c) {
     repairs = repairs.filter(function (r) { if (!c.contains(r.el) || r.cls === 'spl-fit-gutter') return true; drop(r); return false; });
     fits = fits.filter(function (rec) { if (!c.contains(rec.el)) return true; unfit(rec); return false; });
   };
   var floatCards = function (root) {
     if (window.innerWidth !== fillWidth) {
-      filled.forEach(function (rec) { rec.el.classList.remove('spl-fit-fill'); rec.inner.forEach(function (e) { e.classList.remove('spl-fit-fill-in'); }); });
+      filled.forEach(function (rec) {
+        rec.el.classList.remove('spl-fit-fill', 'spl-fit-fill-even', 'spl-fit-fill-bg');
+        rec.el.style.removeProperty('--spl-fit-side'); rec.el.style.removeProperty('--spl-fit-bgx');
+        rec.inner.forEach(function (e) { e.classList.remove('spl-fit-fill-in'); });
+      });
       filled = []; fillWidth = window.innerWidth;
     }
     filled = filled.filter(function (rec) { return rec.el.isConnected; });
     var refilled = false;
-    filled.forEach(function (rec) { if (refill(rec)) refilled = true; });
-    var all = root.querySelectorAll('div'), rows = [];
+    filled.forEach(function (rec) { markRight(rec); if (refill(rec)) refilled = true; });
+    var all = root.querySelectorAll('div'), rows = [], apart = [];
     for (var i = 0; i < all.length && i < CAP; i++) {
       var p = all[i];
       if (rows.indexOf(p) >= 0 || p.closest(NO_REPAIR)) continue;
       var cards = flowKids(p).filter(function (c) { return floated(c) && c.offsetHeight >= FLOAT_CARD_H && !c.classList.contains('spl-fit-fill'); });
-      if (cards.length < 2 || !cards.some(function (a) { return cards.some(function (b) { return a !== b && Math.abs(a.offsetTop - b.offsetTop) <= 2; }); })) continue;
-      var room = p.clientWidth - px(getComputedStyle(p).paddingLeft) - px(getComputedStyle(p).paddingRight);
+      if (cards.length < 2) continue;
+      var pcs = getComputedStyle(p), room = p.clientWidth - px(pcs.paddingLeft) - px(pcs.paddingRight);
+      if (!cards.some(function (a) { return cards.some(function (b) { return a !== b && Math.abs(a.offsetTop - b.offsetTop) <= 2; }); })) {
+        // Each on a line of its own: one sticks out of the row
+        var pr = p.getBoundingClientRect(), left = pr.left + (p.clientLeft || 0) + px(pcs.paddingLeft);
+        if (room < 60 || !cards.some(function (c) { var r = c.getBoundingClientRect(); return r.left < left - 1 || r.right > left + room + 1; })) continue;
+        rows.push(p); apart.push(p);
+        continue;
+      }
       if (!cards.some(function (c) { var need = cardNeed(c); return need > c.offsetWidth && Math.min(need, room) > c.offsetWidth + 2; })) continue;
       rows.push(p);
     }
     rows.forEach(function (p) {
+      var even = apart.indexOf(p) >= 0, side = 0;
+      if (even) flowKids(p).filter(floated).forEach(function (c) { var cs = getComputedStyle(c); side = Math.max(side, px(cs.marginLeft), px(cs.marginRight)); });
       flowKids(p).filter(floated).forEach(function (c) {
-        var rec = { el: c, was: c.offsetWidth, inner: [] };
+        var rec = { el: c, was: c.offsetWidth, area: c.clientWidth, inner: [] };
+        markRight(rec);
+        if (even) { c.style.setProperty('--spl-fit-side', Math.round(side) + 'px'); c.classList.add('spl-fit-fill-even'); }
         c.classList.add('spl-fit-fill');
         // What the other repairs and the graphic fit did in the narrow card is decided again
         unsqueeze(c);
@@ -3707,6 +3757,13 @@
     });
   };
 
+  var WATCH = { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class'] }, watched = [];
+  /** The Ext windows shown over the App's own (its dialogs), outside it */
+  var dialogsOver = function (root) {
+    return windows().filter(function (c) { return !isVue(c); }).map(dom).filter(function (el) {
+      return el && el !== root && !root.contains(el) && !el.contains(root);
+    });
+  };
   var contentRoot = null, contentTimer = null, contentObserver = null, budget = { start: 0, count: 0 }, paused = false, quietTimer = null, quietWait = 1500;
   var contentPass = function () {
     contentTimer = null;
@@ -3725,32 +3782,38 @@
         step(unspill);
         reflowWidth = width;
       }
+      // A dialog over the App (Security Advisor's Security Baseline) is a window of its own,
+      // outside the App's: its boxes wrap, spill and get cut off the same way, so each step
+      // below runs on it too, and it is watched like the App
+      var roots = [root].concat(dialogsOver(root));
+      roots.forEach(function (d) { if (d !== root && watched.indexOf(d) < 0 && contentObserver) { watched.push(d); contentObserver.observe(d, WATCH); } });
+      var each = function (fn) { roots.forEach(function (d) { step(function () { fn(d); }); }); };
       // Side menus, rows and widths first: what spills or is cut off is measured after
       step(sheets);
-      step(function () { repair(root); });
+      each(repair);
       step(regrowRegions);
-      step(function () { chartRows(root); });
-      step(function () { staleGrids(root); });
-      step(function () { flexedRows(root); });
-      step(function () { extSpills(root); });
-      step(function () { chartMasks(root); });
+      each(chartRows);
+      each(staleGrids);
+      each(flexedRows);
+      each(extSpills);
+      each(chartMasks);
       // Boxes that spill over what follows grow first: the rest is measured after
       grown = grown.filter(function (e) { return e.isConnected && e.classList.contains('spl-fit-grow'); });
-      findSpills(root).forEach(function (e) { e.classList.add('spl-fit-grow'); grown.push(e); });
+      each(function (d) { findSpills(d).forEach(function (e) { e.classList.add('spl-fit-grow'); grown.push(e); }); });
       // A page that cuts off what now runs past its bottom scrolls: measured once the boxes grew
-      step(function () { clippedPages(root); shortFrames(root); });
+      each(function (d) { clippedPages(d); shortFrames(d); });
       reflowed = reflowed.filter(function (rec) {
         if (!rec.group[0].isConnected) { unflow(rec); return false; }
         if (rec.group.every(function (g) { return g.classList.contains('spl-fit-reflow'); }) && rec.cb.classList.contains('spl-fit-reflow-grow')) return true;
         if (++rec.n > 5) { unflow(rec); rec.group.forEach(function (g) { reflowState.set(g, rec); }); return false; }
         flow(rec); return true;
       });
-      findOverlaps(root).forEach(function (rec) { flow(rec); reflowed.push(rec); });
+      each(function (d) { findOverlaps(d).forEach(function (rec) { flow(rec); reflowed.push(rec); }); });
       // Content that data filled in may now be cut off: keep a readable width
       windows().forEach(function (w) { if (isVue(w)) keepWideVue(w); else keepWide(w); });
       // Laid out again at the screen's width (no longer kept wide), Ext sets the heights it cuts off at
-      step(function () { clippedPages(root); shortFrames(root); });
-      step(function () { unclipCards(root); regrowCards(root); });
+      each(function (d) { clippedPages(d); shortFrames(d); });
+      each(function (d) { unclipCards(d); regrowCards(d); });
       // 1. Fit or expand
       // (graphics in an App underneath keep their state until it is on top again)
       fits = fits.filter(function (rec) { if (rec.root !== root) return true; var keep = fitOne(rec, root); if (!keep) unfit(rec); return keep; });
@@ -3805,7 +3868,8 @@
       contentSoon(true);
     });
     else contentObserver.disconnect();
-    contentObserver.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class'] });
+    watched = [];
+    contentObserver.observe(root, WATCH);
     contentSoon(false);
   };
   var contentHooked = false;

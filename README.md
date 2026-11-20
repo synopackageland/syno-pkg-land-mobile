@@ -418,7 +418,12 @@ ellipsis wraps instead. Text that wraps under a box the App placed at a fixed sp
 wider than its room (Security Advisor's categories) wraps, its texts taking the width and a
 lone mark staying at the end (`floatRows()`). A framed box whose stylesheet height is
 shorter than its content grows to it, and a body that fills a padded page counts as the
-page for `clippedPages()`. Grids: each column keeps its header or usual value, the widest
+page for `clippedPages()`. A block of text whose spill a box hiding its overflow cuts off
+grows too, past a stylesheet's max-height (`findSpills()`). A dialog the App opens over its
+window (Security Advisor's Security Baseline) is a window of its own: each of these passes
+runs on it as on the App, and it is watched the same way. Floated cards at a desktop width
+that each wrapped onto a line of their own and stick out of the row fill it, with the same
+side margins, and a mark drawn at a card's right edge stays there (`floatCards()`). Grids: each column keeps its header or usual value, the widest
 text column takes the rest and wraps; a grid still too wide scrolls sideways as a whole,
 with no column held in place. Cells that wrap use lines of text, not DSM's row-tall line
 height, and keep at least DSM's one-line row height (`lineFit()`). Every CSS rule is scoped to
