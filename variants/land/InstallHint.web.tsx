@@ -3,6 +3,7 @@ import { Image, Pressable, Text, View } from 'react-native';
 import { installKind, isDismissed, rememberDismissed, type InstallKind } from '../../src/core/install/hint';
 import { fill } from '../../src/core/i18n/strings';
 import { installStrings } from '../../src/core/install/strings';
+import { DSM_TOUCH_ICON, applyDrawnHomeIcons } from '../../src/core/install/dsm-icons';
 import type { InstallHintProps } from './InstallHint';
 import { Icon, type IconName } from './ui';
 import { colors, layout, radius, spacing, type } from './theme';
@@ -21,6 +22,16 @@ if (typeof window !== 'undefined') {
 }
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const canPrompt = () => Boolean(deferred);
+/** DSM's icon for the home screen (src/core/install/dsm-icons.ts): DSM's 96 px one until it is drawn larger */
+let homeIcon = DSM_TOUCH_ICON;
+const currentHomeIcon = () => homeIcon;
+if (typeof document !== 'undefined') {
+  void applyDrawnHomeIcons(document, {
+    fetch: (...args) => window.fetch(...args),
+    canvas: () => document.createElement('canvas'),
+    image: src => { const image = new window.Image(); image.src = src; return image.decode().then(() => image); },
+  }).then(icon => { if (icon) { homeIcon = icon; changed(); } });
+}
 
 const storage = () => { try { return window.localStorage; } catch { return undefined; } };
 function standalone(): boolean {
@@ -38,6 +49,7 @@ function framed(): boolean {
  */
 export function InstallHint({ name, locale }: InstallHintProps) {
   const prompt = useSyncExternalStore(subscribe, canPrompt, () => false);
+  const icon = useSyncExternalStore(subscribe, currentHomeIcon, () => DSM_TOUCH_ICON);
   const [dismissed, setDismissed] = useState(() => isDismissed(storage()));
   const [added, setAdded] = useState(standalone);
   // Added while the page stays open (Chrome switches the tab to the App window)
@@ -60,7 +72,7 @@ export function InstallHint({ name, locale }: InstallHintProps) {
     deferred = undefined; changed();
     try { await event.prompt(); if ((await event.userChoice)?.outcome === 'accepted') setAdded(true); } catch { /* The browser declined to show it */ }
   };
-  return <HintCard kind={kind} title={fill(t.title, { name })} detail={t.detail} closeLabel={t.close} onClose={close}>
+  return <HintCard kind={kind} icon={icon} title={fill(t.title, { name })} detail={t.detail} closeLabel={t.close} onClose={close}>
     {kind === 'ios' ? <View style={{ flexDirection: 'row', gap: spacing.xs }} accessibilityRole="list" accessibilityLabel={t.steps}>
       <Step n={1} icon="ios-share" text={t.stepShare} />
       <Step n={2} icon="add-box" text={t.stepAdd} />
@@ -73,10 +85,10 @@ export function InstallHint({ name, locale }: InstallHintProps) {
   </HintCard>;
 }
 
-function HintCard({ kind, title, detail, closeLabel, onClose, children }: { kind: InstallKind; title: string; detail: string; closeLabel: string; onClose(): void; children: React.ReactNode }) {
+function HintCard({ kind, icon, title, detail, closeLabel, onClose, children }: { kind: InstallKind; icon: string; title: string; detail: string; closeLabel: string; onClose(): void; children: React.ReactNode }) {
   return <View style={{ marginHorizontal: spacing.md, marginBottom: layout.block, padding: spacing.md, paddingTop: spacing.sm, paddingRight: spacing.xs, gap: spacing.sm, borderRadius: radius.lg, backgroundColor: colors.accentSoft }} testID={`install-hint-${kind}`}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-      <Image source={{ uri: 'icons/apple-touch-icon.png' }} style={{ width: 40, height: 40, borderRadius: 9 }} accessibilityIgnoresInvertColors />
+      <Image source={{ uri: icon }} style={{ width: 40, height: 40, borderRadius: 9 }} accessibilityIgnoresInvertColors />
       <View style={{ flex: 1, gap: spacing.xxs }}>
         <Text style={type.headline} accessibilityRole="header">{title}</Text>
         <Text style={type.subhead}>{detail}</Text>

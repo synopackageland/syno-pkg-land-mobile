@@ -80,13 +80,26 @@ The output in `dist/web` holds the page, a PWA manifest (installed, it opens
 full screen without the address bar) and `build.json` with the source commit
 and every file's SHA-256, so a host that vendors the build can check it.
 
-Added to a home screen, the page opens like an App: its own name, icon (180 px
-`apple-touch-icon`, 192/512 px and a maskable 512 px icon) and a white status
-bar; the bars clear the notch and the Home indicator. Until then the home page
-shows a small card in its content, never over it (`variants/land/InstallHint.web.tsx`,
-`src/core/install`): iPhone and iPad Safari get the steps Share › Add to Home
-Screen › Add, and a browser that fires `beforeinstallprompt` (Chrome on Android)
-gets an Add to Home Screen button. Other browsers, added pages, frames and the
+Its icons are DSM's own, so the page reads as part of DSM, and come from DSM's
+origin, so they follow the DSM version (`src/core/install/dsm-icons.ts`). The
+tab uses the files DSM's login page lists (`/webman/favicon.ico`,
+`/webman/resources/images/icon_dsm_16.png` to `icon_dsm_96.png`,
+`/webman/safari_pin_icon.svg` as `mask-icon`). DSM 7.1.1 to 7.4.1 serve the
+same files, and the largest PNG is 96 px, while Chrome offers to install a page
+only with an icon of at least 144 px. So the page draws DSM's icon at 180, 192
+and 512 px from DSM's own vector icon (that SVG, in the blue of DSM's 96 px
+icon, white behind the letters), points the manifest link at a `blob:` copy of
+its manifest with those icons and `apple-touch-icon` at the 180 px one. Until
+then, or when DSM's files can't be read, the static files name DSM's 96 px
+icon. The build carries no icon of its own, so a host must serve it on DSM's
+origin.
+
+Added to a home screen, the page opens like an App: its own name, DSM's icon
+and a white status bar; the bars clear the notch and the Home indicator. Until
+then the home page shows a small card in its content, never over it
+(`variants/land/InstallHint.web.tsx`, `src/core/install`): iPhone and iPad
+Safari get the steps Share › Add to Home Screen › Add, and a browser that fires
+`beforeinstallprompt` (Chrome on Android) gets an Add to Home Screen button. Other browsers, added pages, frames and the
 native App never show it. Closing it is kept in localStorage
 (`spl:install-hint-dismissed`). Its copy has the UI kit's nine locales.
 

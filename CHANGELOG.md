@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The browser page shows DSM's own icon instead of Package Land's: in the browser tab, on the home screen and in the Add to Home Screen card. The tab uses the icon files of the DSM that serves the page, as DSM's own login page does. DSM's largest icon file is 96 px, too small for a sharp home screen icon or for Chrome's install button, so the page draws DSM's icon at 180, 192 and 512 px from DSM's own vector icon; Chrome on Android still offers Add to Home Screen.
 - Text fields (sign-in, Add NAS, the browser page's Add NAS) show focus on the whole rounded field: its edge and icon turn the accent colour. Before, the browser drew its own square ring around the text area only, beside the icon. Every boxed field now shares one component, so the icon, text and buttons sit at the same spacing in each.
 - Virtual Machine Manager's overview fits a phone. Its host, virtual machine and storage cards stack in one column of equal width, with the selected card's marker under it, instead of two cards and one left alone below. The host details under the cards show whole, title and icon included, and the page scrolls instead of the details' own box.
 - Dashboard pages fit a phone (Container Manager's overview at 360 and 390 px). The status card is as tall as its content, with its icon and title row inside its top padding, cards in a row that wraps fill the screen's width, and a card header's title and its CPU / Memory / Network switch each keep one line. A page that hid what ran past its bottom now scrolls, so the usage chart shows whole.
