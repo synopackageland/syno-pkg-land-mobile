@@ -201,7 +201,8 @@ export function Launcher() {
   // DSM Apps open in one warm DSM page on phones (mobile fit on); a page that fails falls back to its own screen
   const fitOn = Boolean(profile && mobileFitOn(profile, Math.min(Dimensions.get('screen').width, Dimensions.get('screen').height)));
   const sessionScope = profile ? Native.sessionKey(profile.origin) : '';
-  const hosted = shell && profile && fitOn && !shell.target.registered ? hostedApp(shell.target.url, profile.origin) : undefined;
+  // An App DSM opens only in a page of its own (Photos, Drive…) goes straight there: the warm page cannot show it
+  const hosted = shell && profile && fitOn && !shell.target.registered && !shell.target.ownPage ? hostedApp(shell.target.url, profile.origin) : undefined;
   const [warmFailed, setWarmFailed] = useState(0), [warmEpoch, setWarmEpoch] = useState(0);
   const warmOn = Boolean(hosted && warmFailed !== shell?.request);
   // Loaded in the background once the signed-in home page is up

@@ -149,8 +149,11 @@ WebView's history before it leaves the App. DSM must allow being framed by
 its own origin, which is its default. Push notifications are not used.
 
 An App frame stays hidden under the launch cover until the App is ready: a DSM
-App once its window shows (the fit reports it), any other page once it has drawn
-something. The cover's arc and fade are CSS animations, so they keep running
+App once its window shows (the fit reports it), a full-page App on its own page
+(Photos, Chat: no DSM window) once DSM has taken its startup mask off and the page
+has drawn something outside a loading mask, any other page once it has drawn
+something. DSM's newer framework loads no Ext on some of these pages (Photos), so
+the fit watches them on its own instead of through its single-App mode. The cover's arc and fade are CSS animations, so they keep running
 while DSM's scripts hold the page's main thread.
 
 ## Release version
@@ -249,8 +252,9 @@ App icon with one arc in the App color turning around it (no track), and the
 App name. With the system "remove animations" setting the arc stays still. It
 appears on the first frame, since a DSM App never paints sooner, and fades out
 over 220 ms when content is ready.
-After 8 s it adds "Still opening" with Reopen and Back; a slow App is never
-judged failed by time alone.
+After 8 s it adds "Still opening" and Back as a hint: the App keeps opening
+and shows itself once drawn, so there is no Reopen, which would only start a slow
+App again. A slow App is never judged failed by time alone.
 A failed main-frame navigation offers Reopen and Back, and stale content
 messages cannot dismiss a failed or replaced attempt. No App-specific portal
 paths are used.
@@ -268,6 +272,13 @@ takes. On Android the WebView's inset, bridge and fit setup run together
 before the first navigation. Registered
 Apps keep their own entry. The top-left button in a DSM App's bar is Home: it
 always returns to the launcher.
+
+Apps DSM opens only in a page of their own never go to the warm page: DSM's
+config gives them the type `standalone` (Photos, Drive, Chat, Calendar, Contacts,
+MailPlus) or `url`. DSM's `AppLaunch` builds a standalone App's window hidden in
+another App's page, where it never shows. Discovery marks them `ownPage`, and the
+launcher opens their `/?launchApp=<id>` page straight away; the warm page also
+refuses them, for a list saved before that mark.
 
 Edge-to-edge windows are not resized for the keyboard. The WebView module
 reports the keyboard top, and each shell pads its frame by the part the keyboard

@@ -47,6 +47,18 @@ test('DSM built-in modules and bundled tools are listed with their own icons, na
   assert.equal(apps.find(a => a.id === 'direct')?.builtin, undefined);
   assert.equal(apps.find(a => a.id === 'external')?.url, origin + '/?launchApp=external');
 });
+test('Apps DSM opens only in a page of their own (standalone, URL) are marked, DSM window Apps are not', () => {
+  const value = { ...data(true, { 'SYNO.ALLOW.ALL.APPLICATIONS': true }), JSConfig: { source: {
+    photos: { ...config, jsID: 'photos', type: 'standalone' },
+    surveillance: { ...config, jsID: 'surveillance', type: 'url', url: 'webman/3rdparty/SurveillanceStation/' },
+    storage: { ...config, jsID: 'storage', type: 'app' },
+  } } };
+  const apps = filterApps(value, origin);
+  assert.equal(apps.find(a => a.id === 'photos')?.ownPage, true);
+  assert.equal(apps.find(a => a.id === 'photos')?.url, origin + '/?launchApp=photos');
+  assert.equal(apps.find(a => a.id === 'surveillance')?.ownPage, true);
+  assert.equal(apps.find(a => a.id === 'storage')?.ownPage, undefined);
+});
 test('DSM Help and Support Center are left out of the App list', () => {
   const app = (base: string) => ({ type: 'app', jsBaseURL: base, title: 'x', allUsers: true, grantPrivilege: 'all', icon: 'images/icon_{0}.png' });
   const value = { ...data(true, { 'SYNO.ALLOW.ALL.APPLICATIONS': true }), JSConfig: { source: {

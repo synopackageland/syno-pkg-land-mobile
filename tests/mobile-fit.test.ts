@@ -2535,6 +2535,72 @@ test('warm page: an App that stops on a script error before its window tells the
   assert.deepEqual(warmLaunch(true).launches(), []);
 });
 
+test('warm page: a standalone or URL App (Photos, Drive) is refused, so it opens on a page of its own at once', () => {
+  const d = startDsm({ app: 'SYNO.SDS.App.PersonalSettings.Instance' });
+  d.vueWindow({ root: true, title: 'Personal', id: 'SYNO.SDS.App.PersonalSettings.Instance' }); d.changed();
+  let launched = 0;
+  d.sds.AppLaunch = () => { launched++; };
+  d.sds.Config.FnMap['SYNO.Foto.AppInstance'] = { config: { type: 'standalone' } };
+  d.sds.Config.FnMap['SYNO.SDS.SurveillanceStation'] = { config: { type: 'url', url: 'webman/3rdparty/SurveillanceStation/' } };
+  d.sds.Config.FnMap['SYNO.SDS.StorageManager.Instance'] = { config: { type: 'app' } };
+  assert.equal(d.p.run('__splFitLaunch("SYNO.Foto.AppInstance")'), false);
+  assert.equal(d.p.run('__splFitLaunch("SYNO.SDS.SurveillanceStation")'), false);
+  assert.equal(launched, 0, 'DSM is never asked to build them in this page');
+  assert.equal(d.p.run('__splFitLaunch("SYNO.SDS.StorageManager.Instance")'), true);
+  assert.equal(launched, 1);
+});
+
+test('own page: a full-page standalone App (no DSM window) is reported once DSM unmasks it and it has drawn', () => {
+  const d = startDsm({ app: 'SYNO.Foto.AppInstance', type: 'standalone' });
+  const desk = d.desk as any;
+  let text = '', masks: unknown[] = [];
+  Object.assign(desk, { className: 'sds-window-v5 sds-window-init-loading sds-standalone-desktop', querySelectorAll: (s: string) => /mask/.test(s) ? masks : [] });
+  Object.defineProperty(desk, 'innerText', { get: () => text });
+  d.p.ctx.document.querySelector = (s: string) => s === '.sds-standalone-desktop' ? desk : null;
+  d.changed(); d.p.advance(400);
+  assert.deepEqual(d.apps(), [], 'DSM still shows its startup mask');
+  desk.className = 'sds-standalone-desktop'; d.changed(); d.p.advance(400);
+  assert.deepEqual(d.apps(), [], 'nothing drawn yet');
+  masks = [{ offsetWidth: 40 }]; text = 'Loading'; d.p.advance(400);
+  assert.deepEqual(d.apps(), [], 'a loading mask is not the App');
+  // The App draws inside its own tree: the page looks again without a window event
+  masks = []; text = 'Timeline'; d.p.advance(400);
+  assert.deepEqual(d.apps(), [{ id: 'SYNO.Foto.AppInstance', title: '', page: '', menu: false, icon: '', back: 0 }]);
+  d.p.advance(1000);
+  assert.equal(d.apps().length, 1, 'reported once');
+});
+
+test('own page: a full-page App on DSM\'s newer framework (no Ext at all) is reported once it has drawn', () => {
+  const d = dsmPage({ app: 'SYNO.Foto.AppInstance', type: 'standalone', late: true });
+  d.p.run(fitJs());
+  d.p.ctx.__sds = d.sds; d.p.run('SYNO = { SDS: __sds };'); d.p.scriptLoaded();
+  d.p.ctx.__init = d.init; d.p.run('SYNO.SDS.init = __init;'); d.p.scriptLoaded();
+  d.start();
+  const desk = d.desk as any;
+  let text = '';
+  Object.assign(desk, { className: 'sds-window-v5 sds-window-init-loading sds-standalone-desktop', querySelectorAll: () => [] });
+  Object.defineProperty(desk, 'innerText', { get: () => text });
+  d.p.ctx.document.querySelector = (s: string) => s === '.sds-standalone-desktop' ? desk : null;
+  text = 'Loading'; d.p.advance(1000);
+  assert.deepEqual(d.apps(), [], 'DSM still shows its startup mask');
+  desk.className = 'sds-standalone-desktop'; text = ''; d.p.advance(1000);
+  assert.deepEqual(d.apps(), []);
+  text = 'Timeline'; d.p.advance(400);
+  assert.deepEqual(d.apps(), [{ id: 'SYNO.Foto.AppInstance', title: '', page: '', menu: false, icon: '', back: 0 }]);
+  d.p.advance(2000);
+  assert.equal(d.apps().length, 1, 'reported once');
+  assert.equal(d.p.ctx.__splFitLaunch, undefined, 'no single-App mode without Ext');
+});
+
+test('own page: a DSM window App keeps waiting for its window, whatever its page draws first', () => {
+  const d = startDsm();
+  const desk = d.desk as any;
+  Object.assign(desk, { className: 'sds-standalone-desktop', querySelectorAll: () => [], innerText: 'Loading' });
+  d.p.ctx.document.querySelector = (s: string) => s === '.sds-standalone-desktop' ? desk : null;
+  d.changed(); d.p.advance(1000);
+  assert.deepEqual(d.apps(), []);
+});
+
 test('desktop gutters: a main panel padded for a desktop window keeps phone gutters and the full width', () => {
   const padded = node('div', { cls: 'main', box: { left: 30, top: 0, width: 333, height: 600 }, cs: { paddingLeft: '30px', paddingRight: '30px', marginLeft: '30px', marginRight: '30px' } },
     [node('div', { box: { left: 60, top: 16, width: 273, height: 40 }, text: 'Restore' })]);

@@ -106,7 +106,7 @@ export function filterApps(value: unknown, origin: string): DiscoveredApp[] {
       desktop.searchParams.set('launchApp', id);
       let direct: string | undefined;
       try { if (typeof config.url === 'string') direct = new URL(config.url, origin).href; } catch { /* Use DSM's launch ID */ }
-      apps.set(id, { id, package: pkg, name: typeof name === 'string' && name ? name : pkg, icon, ...(template?.includes('{0}') ? { iconTemplate: template } : {}), ...(version ? { version } : {}), ...(rank.has(id) ? { dsmRank: rank.get(id) } : {}), url: direct && sameOrigin(direct, origin) ? direct : desktop.href, registered: false, preset: 'desktop', capabilities: [], ...(builtin ? { builtin: true } : {}), ...(visibility === 'runtime' ? { runtimeOnly: true } : {}) });
+      apps.set(id, { id, package: pkg, name: typeof name === 'string' && name ? name : pkg, icon, ...(template?.includes('{0}') ? { iconTemplate: template } : {}), ...(version ? { version } : {}), ...(rank.has(id) ? { dsmRank: rank.get(id) } : {}), url: direct && sameOrigin(direct, origin) ? direct : desktop.href, registered: false, preset: 'desktop', capabilities: [], ...(builtin ? { builtin: true } : {}), ...(visibility === 'runtime' ? { runtimeOnly: true } : {}), ...(config.type !== 'app' ? { ownPage: true } : {}) });
     }
   }
   return [...apps.values()].sort((a, b) => a.name.localeCompare(b.name));

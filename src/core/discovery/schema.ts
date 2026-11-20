@@ -14,6 +14,11 @@ export type DiscoveredApp = AppTarget & {
   builtin?: boolean;
   /** Needs a hardware flag that only the live DSM runtime can confirm */
   runtimeOnly?: boolean;
+  /**
+   * DSM opens this App only in a page of its own (a "standalone" or "url" App: Photos, Drive, Chat,
+   * Calendar…), never as a window in another DSM page, so the warm DSM page cannot host it
+   */
+  ownPage?: boolean;
 };
 export const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const capabilities = ['download', 'open-external', 'camera'];
