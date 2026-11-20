@@ -11,6 +11,7 @@ import * as attention from '../src/core/status/attention.ts';
 import * as modules from '../src/core/status/modules/index.ts';
 import * as security from '../src/core/status/modules/security.ts';
 import * as history from '../src/core/status/modules/history.ts';
+import * as upgrade from '../src/core/status/modules/upgrade.ts';
 import * as summaryModule from '../src/core/status/storage-summary.ts';
 import * as live from '../src/core/status/live.ts';
 import * as calm from '../src/core/status/calm.ts';
@@ -28,7 +29,7 @@ const libs = {
   'react-native': native, './StatusParts': parts, './ui': ui, './theme': theme,
   '../../src/core/i18n/strings': { fill }, '../../src/core/status/model': status, '../../src/core/status/mappers': mappers, '../../src/core/status/format': format,
   '../../src/core/i18n/status-strings': statusStringsModule, '../../src/core/status/attention': attention, '../../src/core/status/modules': modules,
-  '../../src/core/status/modules/security': security, '../../src/core/status/modules/history': history,
+  '../../src/core/status/modules/security': security, '../../src/core/status/modules/history': history, '../../src/core/status/modules/upgrade': upgrade,
   '../../src/core/status/storage-summary': summaryModule, '../../src/core/status/live': live,
   '../../src/core/status/calm': calm,
 };
@@ -100,19 +101,49 @@ test('home cards: administrators get CPU and memory with sparklines and tiles; n
   const failed = cards.render('ResourceCard', { state: stateOf(snapshotOf('admin'), { ...live, error: 'timeout' }), t, locale: 'en', now, onStatus() {} });
   assert.ok(texts(failed).includes(st.justNow));
 });
-test('home: one status line with model, DSM version and uptime; the age only when not live', () => {
+test('home: the DSM version on its own line, then model and uptime; the age only when not live', () => {
   const cards = component('variants/land/HomeCards.tsx', libs);
-  const snapshot = { ...snapshotOf('admin'), user: { user: 'a', dsm: '7.4.1', update: 1 } };
-  const line = cards.render('NasLine', { state: stateOf(snapshot, { live: ['health'] }), t, now, locale: 'en' });
-  const text = line.props.children as string;
-  assert.ok(text.startsWith('RS822+ · DSM 7.4.1 Update 1 · '), text);
-  assert.ok(text.includes(fill(st.upFor, { time: '' }).trim()));
+  const snapshot = { ...snapshotOf('admin'), user: { user: 'a', dsm: '7.4.1', buildNumber: 90080, update: 1 } };
+  const header = cards.render('NasLine', { state: stateOf(snapshot, { live: ['health'] }), t, now, locale: 'en' });
+  const [versionRow, metaLine] = header.props.children;
+  assert.equal(find(versionRow, 'Text')[0].props.children, 'DSM 7.4.1-90080 Update 1');
+  // Up to date (no update stored): the version alone, no tag
+  assert.equal(find(versionRow, 'UpdateTag').length, 0);
+  const text = metaLine.props.children as string;
+  assert.ok(text.startsWith('RS822+ · '), text);
+  assert.ok(!text.includes('DSM'), 'the version is not repeated in the quiet line');
   // One quiet line; the uptime keeps only its largest unit
-  assert.equal(line.props.numberOfLines, 1);
-  assert.match(text.split(' · ')[2], /^up \d+ (d|h|min)$/);
+  assert.equal(metaLine.props.numberOfLines, 1);
+  assert.match(text.split(' · ')[1], /^up \d+ (d|h|min)$/);
   assert.ok(!text.endsWith(st.justNow));
-  assert.ok((cards.render('NasLine', { state: stateOf(snapshot), t, now, locale: 'en' }).props.children as string).endsWith(st.justNow));
+  assert.ok((cards.render('NasLine', { state: stateOf(snapshot), t, now, locale: 'en' }).props.children[1].props.children as string).endsWith(st.justNow));
   assert.equal(cards.render('NasLine', { state: stateOf({ scope: 's', times: {}, denied: [] }), t, now, locale: 'en' }), null);
+  // Before DSM answers the version, the quiet line still shows
+  const early = cards.render('NasLine', { state: stateOf(snapshotOf('admin'), { live: ['health'] }), t, now, locale: 'en' });
+  assert.equal(early.props.children[0], null);
+});
+test('home: an update DSM offers is a tag beside the version that opens Update & Restore', () => {
+  const cards = component('variants/land/HomeCards.tsx', libs);
+  const user = { user: 'a', dsm: '7.4.1', buildNumber: 90080 };
+  const offer = upgrade.mapUpgrade({ update: { available: true, rss_result: 'success', type: 'nano', version: 'DSM 7.4.1-90080 Update 2', version_details: { major: 7, minor: 4, micro: 1, buildnumber: 90080, nano: 2, isSecurityVersion: true } } });
+  const opened: string[] = [];
+  const header = cards.render('NasLine', { state: stateOf({ ...snapshotOf('admin'), user, upgrade: offer }), t, now, locale: 'en', onUpdate: () => opened.push('update') });
+  const [tag] = find(header, 'UpdateTag');
+  assert.equal(tag.props.text, `${st.updateAvailable} · Update 2`);
+  assert.equal(tag.props.label, 'DSM 7.4.1-90080, update available: DSM 7.4.1-90080 Update 2. Opens Update & Restore');
+  const button = inner(tag) as { type: string; props: { onPress(): void; accessibilityRole: string } };
+  assert.equal(button.type, 'Pressable'); assert.equal(button.props.accessibilityRole, 'button');
+  button.props.onPress();
+  assert.deepEqual(opened, ['update']);
+  // Without Control Panel for this account the tag only informs
+  const still = find(cards.render('NasLine', { state: stateOf({ ...snapshotOf('admin'), user, upgrade: offer }), t, now, locale: 'en' }), 'UpdateTag')[0];
+  assert.equal((inner(still) as { type: string }).type, 'View');
+  // Installed since DSM stored the answer: no tag
+  const updated = cards.render('NasLine', { state: stateOf({ ...snapshotOf('admin'), user: { ...user, update: 2 }, upgrade: offer }), t, now, locale: 'en' });
+  assert.equal(find(updated, 'UpdateTag').length, 0);
+  // Every locale names the tag
+  for (const locale of [locales.en, locales.zh, locales.hans]) assert.ok(statusStringsModule.statusStrings(locale).updateAvailable);
+  assert.equal(statusStringsModule.statusStrings(locales.zh).updateAvailable, '可更新');
 });
 const GB = 1024 ** 3, TB = 1024 ** 4;
 const vol = (name: string, used: number, total: number, extra: Partial<mappers.Volume> = {}): mappers.Volume => ({ id: name, name, used, total, status: 'normal', ...extra });

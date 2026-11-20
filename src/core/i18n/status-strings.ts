@@ -30,6 +30,8 @@ const en = {
   // Resources
   live: 'Live', range_week: 'Week', range_month: 'Month', range_half_year: '6 months', range_year: 'Year', noHistory: 'No history yet',
   dsmVersion: 'DSM {version}', upFor: 'up {time}', tomorrow: 'Tomorrow',
+  // DSM update (Control Panel › Update & Restore)
+  updateAvailable: 'Update available', updateLabel: '{current}, update available: {version}. Opens Update & Restore',
 };
 export type StatusStrings = typeof en;
 const zh: StatusStrings = {
@@ -53,6 +55,7 @@ const zh: StatusStrings = {
   pool_normal: '良好', pool_warning: '注意', pool_danger: '故障', status: '狀態', type: '介面',
   live: '即時', range_week: '週', range_month: '月', range_half_year: '半年', range_year: '年', noHistory: '還沒有歷史資料',
   dsmVersion: 'DSM {version}', upFor: '已運行 {time}', tomorrow: '明天',
+  updateAvailable: '可更新', updateLabel: '{current}，可更新至 {version}。開啟「更新與還原」',
 };
 const hans: StatusStrings = {
   attention: '需要注意', allClear: '一切正常', allClearAge: '一切正常 · {age}',
@@ -75,6 +78,7 @@ const hans: StatusStrings = {
   pool_normal: '良好', pool_warning: '注意', pool_danger: '故障', status: '状态', type: '接口',
   live: '实时', range_week: '周', range_month: '月', range_half_year: '半年', range_year: '年', noHistory: '还没有历史数据',
   dsmVersion: 'DSM {version}', upFor: '已运行 {time}', tomorrow: '明天',
+  updateAvailable: '可更新', updateLabel: '{current}，可更新至 {version}。打开“更新和还原”',
 };
 /** The status strings in the launcher strings' language */
 export function statusStrings(t: Strings): StatusStrings {

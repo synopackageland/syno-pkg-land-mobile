@@ -4,10 +4,17 @@ import { readFileSync } from 'node:fs';
 import { formatNotice, mapHealth, mapLastRead, mapNoticeStrings, mapNotifications, mapOverview, mapStorage, mapUser, mapUtilization, parseUptime } from '../src/core/status/mappers.ts';
 import { formatBytes, formatRate, groupByDay, dayLabel, uptimeParts, usedOfTotal } from '../src/core/status/format.ts';
 import { modules } from '../src/core/status/modules/index.ts';
+import { dsmLabel, mapUpgrade, pendingUpdate, releaseShort, updatePageUrl } from '../src/core/status/modules/upgrade.ts';
 import { StatusModel, calls, dsmLang, isUnread, moreUnread, unreadCount, type StatusStorage, type StatusSnapshot, type ReadState } from '../src/core/status/model.ts';
 
 const nas = JSON.parse(readFileSync('tests/fixtures/status/nas.json', 'utf8'));
 const origin = 'https://nas.example.com:5001';
+/** SYNO.Core.Upgrade.Server check v4 as DSM 7.4.1 answers it with a nano update waiting */
+const upgradeAnswer = {
+  promotion: { available: false, rss_result: 'success' },
+  security_version: { available: true, rss_result: 'success', type: 'nano', version: 'DSM 7.4.1-90080 Update 2', version_details: { buildnumber: 90080, isSecurityVersion: true, major: 7, micro: 1, minor: 4, nano: 2, os_name: 'DSM' } },
+  update: { available: true, reboot: 'now', restart: 'some', rss_result: 'success', type: 'nano', version: 'DSM 7.4.1-90080 Update 2', version_details: { buildnumber: 90080, isSecurityVersion: true, major: 7, micro: 1, minor: 4, nano: 2, os_name: 'DSM' } },
+};
 
 test('utilization maps CPU, memory (KiB to bytes), network and disk rates', () => {
   const u = mapUtilization(nas.util);
@@ -57,9 +64,68 @@ test('overview, health, storage and account map with tolerant parsing', () => {
   assert.deepEqual(mapUser(nas.user), { user: 'normal-user', admin: false, hostname: 'nas-example', dsm: undefined, update: undefined, build: undefined });
   // The DSM build keys the capability table: product version, full version and small fix
   assert.deepEqual(mapUser({ Session: { user: 'a', productversion: '7.4.1', fullversion: '90080', smallfixnumber: 1 } }).build, '7.4.1-90080-1');
+  // The build number for the version label: `version`, else the digits of `fullversion`
+  assert.equal(mapUser({ Session: { productversion: '7.4.1', version: '90080', fullversion: '90080-s0' } }).buildNumber, 90080);
+  assert.equal(mapUser({ Session: { productversion: '7.3.2', fullversion: '86009-s3' } }).buildNumber, 86009);
   assert.equal(parseUptime('1:2:3'), 3723);
   assert.equal(parseUptime('bad'), undefined);
   assert.equal(parseUptime(5), undefined);
+});
+test('DSM update: check v1 to v4 map to the release DSM offers, never an error or noise', () => {
+  const next = mapUpgrade(upgradeAnswer).available!;
+  assert.deepEqual(next, { version: 'DSM 7.4.1-90080 Update 2', kind: 'update', security: true, major: 7, minor: 4, micro: 1, build: 90080, nano: 2 });
+  // v1 answers the update alone, unnested
+  assert.deepEqual(mapUpgrade(upgradeAnswer.update).available, next);
+  // Up to date, a failed server check (rss_result) or an odd answer: nothing to offer
+  assert.equal(mapUpgrade({ update: { available: false, rss_result: 'success' }, promotion: { available: false } }).available, undefined);
+  assert.equal(mapUpgrade({ update: { available: false, rss_result: 'server_error' } }).available, undefined);
+  assert.equal(mapUpgrade({ update: { available: true } }).available, undefined, 'no version, no tag');
+  assert.equal(mapUpgrade(null).available, undefined);
+  // A new major version when no update of this one is waiting
+  const promotion = mapUpgrade({ update: { available: false }, promotion: { available: true, version: 'DSM 8.0-10000', version_details: { major: 8, minor: 0, micro: 0, buildnumber: 10000, nano: 0 } } }).available!;
+  assert.equal(promotion.kind, 'promotion');
+});
+test('DSM update: the version label, and an offer only while it is newer than DSM now', () => {
+  const user = { dsm: '7.4.1', buildNumber: 90080, update: 1 };
+  assert.equal(dsmLabel(user), 'DSM 7.4.1-90080 Update 1');
+  assert.equal(dsmLabel({ dsm: '7.4.1', buildNumber: 90080 }), 'DSM 7.4.1-90080');
+  assert.equal(dsmLabel({ dsm: '7.4.1' }), 'DSM 7.4.1');
+  assert.equal(dsmLabel({}), undefined);
+  const offer = mapUpgrade(upgradeAnswer);
+  assert.ok(pendingUpdate(offer, user));
+  assert.ok(pendingUpdate(offer, { dsm: '7.4.1', buildNumber: 90080 }));
+  // Installed since DSM stored the answer, or an older one: no offer
+  assert.equal(pendingUpdate(offer, { ...user, update: 2 }), undefined);
+  assert.equal(pendingUpdate(offer, { dsm: '7.4.2', buildNumber: 90100 }), undefined);
+  // The current version unknown yet: DSM's answer stands
+  assert.ok(pendingUpdate(offer, undefined));
+  assert.equal(pendingUpdate(undefined, user), undefined);
+  // The tag's short name: "Update 2" on this build, else DSM's version without "DSM"
+  assert.equal(releaseShort(offer.available!, user), 'Update 2');
+  assert.equal(releaseShort(offer.available!, { dsm: '7.3.2', buildNumber: 86009 }), '7.4.1-90080 Update 2');
+  assert.equal(updatePageUrl('https://nas.example.com:5001/'), 'https://nas.example.com:5001/?launchApp=SYNO.SDS.AdminCenter.Application&launchParam=fn%3DSYNO.SDS.AdminCenter.Update_Reset.Main');
+});
+test('DSM update: read from DSM\'s stored result once an hour on Home; normal users see only the version', async () => {
+  const { model, nas: n, clock: c } = setup();
+  model.select('p1', origin, 'scope-a'); model.setMode('home');
+  await c.advance(0);
+  const checks = () => n.requests.flatMap(r => r.items).filter(i => i.startsWith('SYNO.Core.Upgrade.Server'));
+  assert.equal(checks().length, 1);
+  // Never a fresh online check, a download or an install
+  const call = JSON.parse(new URL(n.requests[0].url).searchParams.get('compound')!).find((x: { api: string }) => x.api === 'SYNO.Core.Upgrade.Server');
+  assert.equal(call.method, 'check'); assert.equal(call.ignore_cache, undefined); assert.equal(call.user_reading, undefined);
+  assert.equal(model.state.snapshot?.upgrade?.available?.version, 'DSM 7.4.1-90080 Update 2');
+  await c.advance(59 * 60_000);
+  assert.equal(checks().length, 1);
+  await c.advance(2 * 60_000);
+  assert.equal(checks().length, 2);
+  // Normal users: DSM answers 105; the item is hidden without an error
+  const normal = setup('normal');
+  normal.model.select('p1', origin, 'scope-n'); normal.model.setMode('home');
+  await normal.clock.advance(0);
+  assert.ok(normal.model.state.snapshot?.denied.includes('upgrade'));
+  assert.equal(normal.model.state.snapshot?.upgrade, undefined);
+  assert.equal(normal.model.state.error, undefined);
 });
 test('sizes are 1024-based and labelled GB the DSM way', () => {
   assert.equal(formatBytes(1024 ** 3), '1 GB');
@@ -130,6 +196,7 @@ function fakeNas(account: Account) {
     if (key === 'SYNO.Core.UserSettings:get:') return ok(nas.lastRead);
     if (key === 'SYNO.Core.SecurityScan.Status:system_get:') return account === 'admin' ? ok({ sysStatus: 'safe', items: {} }) : denied(105);
     if (key === 'SYNO.Backup.Task:list:') return account === 'admin' ? ok({ task_list: [] }) : denied(105);
+    if (key === 'SYNO.Core.Upgrade.Server:check:') return account === 'admin' ? ok(upgradeAnswer) : denied(105);
     return denied(102);
   };
   const read = async (url: string) => {
@@ -201,7 +268,7 @@ test('one compound request per refresh, only while visible and in the foreground
   model.setMode('home');
   await c.advance(0);
   assert.equal(n.requests.length, 1);
-  assert.deepEqual(n.requests[0].items.sort(), ['SYNO.Backup.Task:list:', 'SYNO.Core.DSMNotify:notify:', 'SYNO.Core.Desktop.Initdata:get_user_service:', 'SYNO.Core.SecurityScan.Status:system_get:', 'SYNO.Core.System.Utilization:get:', 'SYNO.Core.System:info:overview', 'SYNO.Core.System:info:systemHealth', 'SYNO.Core.UserSettings:get:', 'SYNO.Storage.CGI.Storage:load_info:'].sort());
+  assert.deepEqual(n.requests[0].items.sort(), ['SYNO.Backup.Task:list:', 'SYNO.Core.DSMNotify:notify:', 'SYNO.Core.Desktop.Initdata:get_user_service:', 'SYNO.Core.SecurityScan.Status:system_get:', 'SYNO.Core.System.Utilization:get:', 'SYNO.Core.System:info:overview', 'SYNO.Core.System:info:systemHealth', 'SYNO.Core.Upgrade.Server:check:', 'SYNO.Core.UserSettings:get:', 'SYNO.Storage.CGI.Storage:load_info:'].sort());
   // The capability table is read once before the first compound request, not on every refresh
   assert.equal(n.info, 1);
   assert.equal(model.state.snapshot?.overview?.model, 'RS822+');

@@ -19,7 +19,7 @@ export type Health = { uptime?: number; model?: string; disks: Disk[]; links: Li
 export type Volume = { id: string; name: string; total: number; used: number; status: 'normal' | 'warning' | 'danger'; state?: VolumeState; pool?: string };
 export type VolumeState = 'crashed' | 'degraded' | 'readonly';
 /** `dsm` is the product version (7.4.1) with its update number; `build` keys the capability table */
-export type UserInfo = { user?: string; admin?: boolean; hostname?: string; dsm?: string; update?: number; build?: string };
+export type UserInfo = { user?: string; admin?: boolean; hostname?: string; dsm?: string; update?: number; build?: string; buildNumber?: number };
 export type Notice = { id: number; time: number; tag: string; level: 'info' | 'warning' | 'error'; params: Record<string, string>; className: string };
 export type Notifications = { items: Notice[]; total: number; newest: number };
 /** One catalog entry of SYNO.Core.DSMNotify.Strings, trimmed to what the list shows */
@@ -129,9 +129,12 @@ export function mapUser(data: unknown): UserInfo {
   const session = record(record(data).Session);
   const dsm = str(session.productversion), update = num(session.smallfixnumber);
   const build = str(session.fullversion) ?? str(session.version);
+  // DSM's build number (90080): `version`, else the digits leading `fullversion` ("90080-s0")
+  const buildNumber = num(session.version) ?? num(/^\d+/.exec(str(session.fullversion) ?? '')?.[0]);
   return {
     user: str(session.user), admin: typeof session.is_admin === 'boolean' ? session.is_admin : undefined, hostname: str(session.hostname),
     dsm, update: update && update > 0 ? update : undefined, build: build ? [dsm, build, update].filter(v => v !== undefined).join('-') : undefined,
+    ...(buildNumber ? { buildNumber } : {}),
   };
 }
 

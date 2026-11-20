@@ -12,6 +12,7 @@ import { moveApp, orderApps } from '../src/core/launcher/order.ts';
 import type { DiscoveredApp } from '../src/core/discovery/schema.ts';
 import type { NasProfile } from '../src/core/config.ts';
 import { hostedApp, mobileFitOn, warmUrl } from '../src/core/webview/mobile-fit/index.ts';
+import * as upgradeModule from '../src/core/status/modules/upgrade.ts';
 import type { Discovery } from '../src/core/discovery/client.ts';
 
 const t = locales.en;
@@ -367,7 +368,7 @@ function app(options: { reduced?: boolean; tablet?: boolean; restored?: unknown;
     '../../modules/webview-cookies': { default: { setCertificatePins: async (value: unknown) => { pins.push(value); }, clearSession: async (origin: string, keep: boolean) => { cleared.push(origin); keeps.push(keep); }, sessionKey: () => key, logOpen() {}, logSignIn() {}, addListener: () => ({ remove() {} }), takePendingIntake: async () => ({ items: [] }), readJson: async () => ({}), probe: async () => ({ error: 'refused' }), cancelProbe() {} } },
     '../../src/core/webview/ShellPool': { ShellPool: 'ShellPool' }, '../../src/core/webview/ShellScreen': { ShellScreen: 'ShellScreen' },
     '../../src/core/webview/LaunchCover': { LaunchCover: 'LaunchCover', useReducedMotion: () => Boolean(options.reduced) },
-    '../../src/core/discovery/client': { createDiscovery: () => {} },
+    '../../src/core/discovery/client': { createDiscovery: () => {} }, '../../src/core/status/modules/upgrade': upgradeModule,
     '../../src/core/launcher/model': { LauncherModel: class { constructor() { return model; } }, intakeChoice },
     '../../src/core/launcher/storage': { launcherStorage: {} }, '../../src/core/intake/inbox': { intakeInbox: new IntakeInbox() },
     '../../src/core/transfers/download': { cleanupDownloads() {} }, '../../src/core/profiles/qr': { qrGroup },
@@ -400,6 +401,22 @@ test('app: registered and DSM-layout Apps open on the first tap, with no confirm
   a2.one('AppsTab').onOpen(a2.nasApps[1]); a2.render();
   assert.equal(a2.one('ShellPool').target.id, 'desk');
   assert.equal(a2.page.elements('ConfirmSheet').length, 0);
+});
+test('app: the DSM update tag opens Control Panel at Update & Restore, only for an account with Control Panel', async () => {
+  const a = app(); a.render(); await flush(); a.render();
+  assert.equal(a.one('Overview').onUpdate, undefined, 'no Control Panel, no button');
+  const b = app();
+  b.nasApps.push({ id: 'SYNO.SDS.AdminCenter.Application', package: 'AdminCenter', name: 'Control Panel', registered: false, preset: 'desktop', url: profile.origin + '/?launchApp=SYNO.SDS.AdminCenter.Application', capabilities: [], builtin: true });
+  b.render(); await flush(); b.render();
+  b.one('Overview').onUpdate(); b.render();
+  const target = b.one('ShellPool').target;
+  // Its own target: a Control Panel already open on another page is not reused
+  assert.equal(target.id, 'SYNO.SDS.AdminCenter.Application:update');
+  assert.equal(target.name, 'Control Panel');
+  const url = new URL(target.url);
+  assert.equal(url.origin, profile.origin);
+  assert.equal(url.searchParams.get('launchApp'), 'SYNO.SDS.AdminCenter.Application');
+  assert.equal(url.searchParams.get('launchParam'), 'fn=SYNO.SDS.AdminCenter.Update_Reset.Main');
 });
 test('app: the native sign-in form replaces the DSM page and closes as soon as DSM accepts the sign-in', async () => {
   const a = app(); a.render(); await flush(); a.render();

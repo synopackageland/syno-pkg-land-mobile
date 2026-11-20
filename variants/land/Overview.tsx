@@ -23,6 +23,8 @@ type Props = {
   onStatusPage?(page: GlancePage): void;
   /** A DSM App by launchApp id for "Open in DSM" */
   onOpenApp?: OpenApp;
+  /** Control Panel › Update & Restore; absent when this account has no Control Panel */
+  onUpdate?(): void;
   blurTarget?: BlurTarget;
   /** Changes when the selected tab is pressed again: scroll to the top */
   top?: number;
@@ -32,7 +34,7 @@ type Props = {
  * The Overview tab: how this NAS is doing. The status modules are laid out here in
  * order; what each card shows lives with the card.
  */
-export function Overview({ state, profile, busy, notice, shareWaiting, status, now, language, onAdd, onScan, onSignIn, onRefresh, onSwitch, onDetails, onDismissNotice, onStatus, onStorage, onAccount, onStatusPage, onOpenApp, blurTarget, top }: Props) {
+export function Overview({ state, profile, busy, notice, shareWaiting, status, now, language, onAdd, onScan, onSignIn, onRefresh, onSwitch, onDetails, onDismissNotice, onStatus, onStorage, onAccount, onStatusPage, onOpenApp, onUpdate, blurTarget, top }: Props) {
   const t = strings();
   const ownTarget = useBlurTarget(), target = blurTarget ?? ownTarget;
   const bars = useBarInsets();
@@ -50,8 +52,8 @@ export function Overview({ state, profile, busy, notice, shareWaiting, status, n
       {/* Browser build only: in the page's content, so it never covers the NAS status */}
       <InstallHint name={landConfig.name} locale={language} />
       {ready && profile && status ? <View style={{ gap: layout.block }}>
-        {/* One line, then what needs attention, resources, storage and backup (report §2.1) */}
-        <NasLine state={status} t={t} now={now} locale={language} />
+        {/* The DSM version and one line, then what needs attention, resources, storage and backup (report §2.1) */}
+        <NasLine state={status} t={t} now={now} locale={language} onUpdate={onUpdate} />
         {!failed ? <OfflineLine state={status} t={t} locale={language} onRetry={onRefresh} /> : null}
         <AttentionBlock state={status} t={t} now={now} locale={language} onOpenApp={onOpenApp} onPage={onStatusPage} />
         <ResourceCard state={status} t={t} locale={language} now={now} onStatus={onStatus} onStorage={onStorage} storage={false} />
